@@ -1,11 +1,11 @@
-"""Per-language, per-CEFR-level instruction fragments for Session's system prompt.
+"""Per-language, per-CEFR-level instruction fragments for the conversation system prompt.
 
 Add support for a new target language by adding an entry to _ADAPTERS. Levels
 left undefined for a language fall back to a generic, language-agnostic
 description.
 """
 
-from proficiency import Proficiency
+from .proficiency import Proficiency
 
 _ADAPTERS: dict[str, dict[Proficiency, str]] = {
     "ja": {
