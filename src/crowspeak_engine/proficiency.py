@@ -1,4 +1,4 @@
-"""CEFR proficiency levels used to scale LLM output within a Session."""
+"""CEFR proficiency levels used to scale LLM output within a Conversation."""
 
 from enum import Enum
 
