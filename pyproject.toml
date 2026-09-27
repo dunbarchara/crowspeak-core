@@ -22,3 +22,5 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = ["live: hits the real Azure Foundry endpoint (costs money); opt-in via -m live"]
+addopts = "-m 'not live'"

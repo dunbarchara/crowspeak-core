@@ -102,7 +102,7 @@ Conversation events carry `session_id`, `conversation_id` and `speaker_id` (the 
 
 ## 8. Boundaries
 
-- **`LLMProvider`** (`llm/base.py`) is a small protocol: `stream(messages) -> AsyncIterator[str]`. The engine depends on that and nothing else. `AzureOpenAIProvider` is the first adapter and takes its configuration in its constructor. `from_env()` is a convenience that lives in the adapter, and callers are responsible for loading `.env`. Nothing is read at import time, so `import crowspeak_engine` never fails for lack of credentials (it used to raise `KeyError`).
+- **`LLMProvider`** (`llm/base.py`) is a small protocol: `stream(messages) -> AsyncIterator[str]`. The engine depends on that and nothing else. `AzureOpenAIProvider` is the first adapter and takes its configuration in its constructor. `from_env()` is a convenience that lives in the adapter, and callers are responsible for loading `.env`. Nothing is read at import time, so `import crowspeak_engine` never fails for lack of credentials (it used to raise `KeyError`). `LocalOpenAIProvider` (`llm/local.py`) targets any OpenAI-compatible local server such as Ollama. `provider_from_env()` (`llm/factory.py`) picks between them via `LLM_PROVIDER` (`azure`, the default, or `local`). Both adapters share one streaming loop in `llm/_openai_stream.py`.
 - **No terminal I/O, no environment reads in the engine.** `tests/test_boundary.py` enforces this. The only exception is the `llm/` adapters.
 - **The CLI is separate** (`crowspeak_cli`): the prompts, printing, UTF-8 stdout fix for Windows, and `--persona` flag all live there. It is deliberately minimal, because it is a reference client.
 
@@ -118,7 +118,7 @@ src/crowspeak_engine/
   prefs.py        InteractionPrefs, resolve_prefs
   prompts.py      system-prompt composition
   events.py       domain events
-  llm/            LLMProvider protocol, Azure adapter
+  llm/            LLMProvider protocol, Azure + local adapters, env factory
   proficiency*.py CEFR levels and per-language adapters (moved unchanged)
 src/crowspeak_cli/  reference terminal client
 tests/
