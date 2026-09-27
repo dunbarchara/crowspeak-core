@@ -2,6 +2,7 @@
 
 import argparse
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from crowspeak_engine import (
     Proficiency,
     TranscriptDelta,
 )
-from crowspeak_engine.llm.azure_openai import AzureOpenAIProvider
+from crowspeak_engine.llm import provider_from_env
 
 
 def _prompt(label: str, default: str) -> str:
@@ -112,6 +113,9 @@ def main() -> None:
     parser.add_argument(
         "--persona", help="Persona text, or path to a file containing it (default: generic partner)"
     )
+    parser.add_argument(
+        "--debug", action="store_true", help="Print which LLM provider/model is in use"
+    )
     args = parser.parse_args()
 
     load_dotenv()
@@ -121,7 +125,12 @@ def main() -> None:
     sys.stdout.reconfigure(encoding="utf-8")
 
     persona = _load_persona(args.persona)
-    engine = Engine(AzureOpenAIProvider.from_env())
+    llm = provider_from_env()
+    if args.debug:
+        # load_dotenv() does not override variables already set in the shell.
+        print(f"[debug] LLM_PROVIDER={os.environ.get('LLM_PROVIDER', 'azure')}", file=sys.stderr)
+        print(f"[debug] {getattr(llm, 'describe', lambda: repr(llm))()}", file=sys.stderr)
+    engine = Engine(llm)
     learner, prefs = configure_learner()
     try:
         asyncio.run(_chat(engine, learner, prefs, persona))
