@@ -96,6 +96,8 @@ async for event in conversation.send_text("こんにちは"):
 
 Conversation events carry `session_id`, `conversation_id` and `speaker_id` (the NPC id, or `"user"`), so one client can multiplex many conversations in a single session. That is the concrete payoff of the Session/Conversation split.
 
+If a consumer stops consuming `send_text` mid-stream (task cancelled, client disconnects), `finally` cleanup keeps history coherent: the partial reply is kept as a `Message(..., interrupted=True)` if any chunks arrived, or the pending user message is rolled back if none did. No event is yielded for this — the disconnected consumer isn't listening — it only matters to a later reader of `history` (e.g. resuming a session, or the future gateway).
+
 `AgentAudioChunk`, `ExpressionChange` and `GrammarFeedback` from the architecture doc are deliberately not defined yet, since the doc doesn't specify their schemas and we'd be inventing them.
 
 **Async and streaming from the start.** The target pipeline is async STT to LLM to TTS, and streaming deltas are what the doc's `TranscriptDelta` implies. Adding these later would change every caller.
@@ -147,4 +149,3 @@ These are intentionally open and are the first things to discuss after this foun
 - **History growth.** History is replayed in full each turn, with no truncation or token budgeting.
 - **Persistence.** Sessions and conversations are in-memory only.
 - **Gateway and protocol.** A wire format for events (WebSocket) and a place for `SessionStarted` to be sent.
-- **Event review.** The current four are a minimal set. We agreed to review each component in more depth now that it exists.

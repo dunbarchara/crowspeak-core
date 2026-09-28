@@ -12,3 +12,6 @@ Role = Literal["system", "user", "assistant"]
 class Message:
     role: Role
     content: str
+    # True if the stream that produced this message was cancelled mid-turn
+    # (consumer disconnected, task cancelled) rather than finishing normally.
+    interrupted: bool = False

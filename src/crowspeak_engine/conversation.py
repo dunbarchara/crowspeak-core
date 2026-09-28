@@ -72,14 +72,32 @@ class Conversation:
         self.history.append(Message(role="user", content=text))
         ids = self._ids(self.npc.id)
         chunks: list[str] = []
+        # True once the stream has settled one way or another (finished normally, or a
+        # provider error was already handled below) — i.e. no cancellation cleanup needed.
+        settled = False
         try:
-            async for delta in self._llm.stream(self.to_api_messages()):
-                chunks.append(delta)
-                yield TranscriptDelta(text=delta, role="assistant", **ids)
-        except Exception as e:
-            self.history.pop()
-            yield EngineError(message=str(e), recoverable=True, **ids)
-            return
+            try:
+                async for delta in self._llm.stream(self.to_api_messages()):
+                    chunks.append(delta)
+                    yield TranscriptDelta(text=delta, role="assistant", **ids)
+                settled = True
+            except Exception as e:
+                self.history.pop()
+                yield EngineError(message=str(e), recoverable=True, **ids)
+                settled = True
+                return
+        finally:
+            # Reached on cancellation (GeneratorExit / asyncio.CancelledError) mid-stream,
+            # i.e. `settled` is still False because neither branch above ran to completion.
+            # Can't yield an event here (the consumer, by definition, has stopped listening)
+            # — just keep history coherent so a later reader can resume the conversation.
+            if not settled:
+                if chunks:
+                    self.history.append(
+                        Message(role="assistant", content="".join(chunks), interrupted=True)
+                    )
+                else:
+                    self.history.pop()
 
         message = Message(role="assistant", content="".join(chunks))
         self.history.append(message)
