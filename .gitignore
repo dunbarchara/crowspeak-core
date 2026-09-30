@@ -5,3 +5,6 @@ __pycache__/
 .venv/
 *.egg-info/
 .pytest_cache/
+
+# Throwaway demo TUI (see src/crowspeak_tui/SPEC.md)
+src/crowspeak_tui/
