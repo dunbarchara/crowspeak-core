@@ -1,4 +1,4 @@
-from crowspeak_engine import InteractionPrefs, LanguageProfile, Npc, Proficiency
+from crowspeak_engine import EXPRESSIONS, Features, InteractionPrefs, LanguageProfile, Npc, Proficiency
 from crowspeak_engine.proficiency_adapters import get_adapter
 
 
@@ -33,3 +33,16 @@ def test_constraints_appear_in_prompt(session):
     )
     prompt = session.converse(npc).system_prompt()
     assert "only understand ja" in prompt and "only speak ja" in prompt
+
+
+def test_prompt_lists_expression_tags(session):
+    prompt = session.converse(features=Features(expression=True)).system_prompt()
+    for label in EXPRESSIONS:
+        assert f"[{label}]" in prompt
+    assert "never translate" in prompt
+
+
+def test_prompt_has_no_expression_instruction_by_default(session):
+    prompt = session.converse().system_prompt()
+    assert "expression tag" not in prompt
+    assert "[happy]" not in prompt

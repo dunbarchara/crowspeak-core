@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Sequence
+
 from .npc import Npc
 from .profile import LanguageProfile
 from .proficiency_adapters import get_adapter
@@ -19,6 +21,7 @@ def build_system_prompt(
     npc: Npc,
     input_language: str,
     response_language: str,
+    expressions: Sequence[str] = (),
 ) -> str:
     parts = [
         npc.persona,
@@ -44,5 +47,15 @@ def build_system_prompt(
         )
     if npc.speaks is not None:
         parts.append(f"You only speak {', '.join(sorted(npc.speaks))}.")
+
+    if expressions:
+        tags = ", ".join(f"[{e}]" for e in expressions)
+        parts.append(
+            f"Begin every reply with exactly one expression tag in square brackets, chosen "
+            f"from: {tags}. The tag says how you are delivering the line. Tags are always "
+            "English and lower-case: never translate them and never mention them. If your "
+            "mood changes, you may put another tag before a later sentence. For example, a "
+            'cheerful reply starts with "[happy]" followed by your normal reply text.'
+        )
 
     return "\n".join(parts)

@@ -15,3 +15,6 @@ class Message:
     # True if the stream that produced this message was cancelled mid-turn
     # (consumer disconnected, task cancelled) rather than finishing normally.
     interrupted: bool = False
+    # The model's output with expression tags intact (assistant turns only). `content`
+    # is the clean text; `raw` is what goes back to the LLM so it keeps the tag format.
+    raw: str | None = None

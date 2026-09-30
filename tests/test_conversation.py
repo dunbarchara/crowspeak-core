@@ -6,11 +6,16 @@ from conftest import FakeLLM
 from crowspeak_engine import (
     Engine,
     EngineError,
+    ExpressionChange,
+    Features,
     LanguageProfile,
     Npc,
     TranscriptDelta,
     TurnCompleted,
 )
+
+
+ON = Features(expression=True)
 
 
 async def collect(conv, text):
@@ -116,3 +121,105 @@ async def test_multi_npc_events_are_isolated_per_conversation(session, llm):
     assert conv_a.conversation_id != conv_b.conversation_id
     assert len(conv_a.history) == 2
     assert len(conv_b.history) == 2
+
+
+async def test_tags_become_expression_events_and_are_stripped_from_text(session, llm):
+    llm.chunks = ["[hap", "py] Bonjour", "! [thinking] ", "Et toi ?"]
+    conv = session.converse(features=ON)
+    events = await collect(conv, "hi")
+
+    kinds = [type(e) for e in events]
+    assert kinds[0] is ExpressionChange and events[0].label == "happy"
+    assert kinds[-1] is TurnCompleted
+    labels = [e.label for e in events if isinstance(e, ExpressionChange)]
+    assert labels == ["happy", "thinking"]
+    text = "".join(e.text for e in events if isinstance(e, TranscriptDelta))
+    assert text == "Bonjour! Et toi ?"
+    # the expression precedes the first non-empty text
+    first_text = next(i for i, e in enumerate(events) if isinstance(e, TranscriptDelta))
+    assert first_text > 0 and isinstance(events[first_text - 1], ExpressionChange)
+
+    message = events[-1].message
+    assert message.content == "Bonjour! Et toi ?"
+    assert message.raw == "[happy] Bonjour! [thinking] Et toi ?"
+
+
+async def test_history_sent_back_to_llm_keeps_tags(session, llm):
+    llm.chunks = ["[sad] Oh no."]
+    conv = session.converse(features=ON)
+    await collect(conv, "first")
+    await collect(conv, "second")
+    assistant = [m for m in llm.calls[1] if m["role"] == "assistant"]
+    assert assistant == [{"role": "assistant", "content": "[sad] Oh no."}]
+    assert conv.history[1].content == "Oh no."
+
+
+async def test_reply_with_only_a_tag_still_completes(session, llm):
+    llm.chunks = ["[angry]"]
+    events = await collect(session.converse(features=ON), "hi")
+    assert [e.label for e in events if isinstance(e, ExpressionChange)] == ["angry"]
+    assert events[-1].message.content == ""
+
+
+async def test_cancellation_persists_clean_text_and_raw(session, llm):
+    llm.chunks = ["[happy] Hel", "lo", " world"]
+    conv = session.converse(features=ON)
+    gen = conv.send_text("hi")
+    await gen.__anext__()  # ExpressionChange(happy)
+    await gen.__anext__()  # "Hel"
+    await gen.aclose()
+
+    reply = conv.history[-1]
+    assert reply.interrupted is True
+    assert reply.content == "Hel"
+    assert reply.raw == "[happy] Hel"
+
+
+async def test_expression_on_defaults_to_neutral_before_first_text(session, llm):
+    events = await collect(session.converse(features=ON), "hi")
+    assert [type(e) for e in events] == [
+        ExpressionChange,
+        TranscriptDelta,
+        TranscriptDelta,
+        TranscriptDelta,
+        TurnCompleted,
+    ]
+    assert events[0].label == "neutral"
+
+
+async def test_expression_off_by_default_strips_stray_tags_without_events(session, llm):
+    llm.chunks = ["[happy] Bon", "jour"]
+    conv = session.converse()
+    events = await collect(conv, "hi")
+    assert not any(isinstance(e, ExpressionChange) for e in events)
+    assert "".join(e.text for e in events if isinstance(e, TranscriptDelta)) == "Bonjour"
+    assert events[-1].message.content == "Bonjour"
+    assert "[happy]" not in llm.calls[0][0]["content"]  # no tag instruction in the prompt
+
+
+async def test_session_default_and_conversation_override(session, llm):
+    session.set_features(ON)
+    on_conv = session.converse()
+    off = Npc(id="off", name="Off", persona="", language=LanguageProfile(native="ja"))
+    off_conv = session.converse(off, features=Features(expression=False))
+
+    assert any(isinstance(e, ExpressionChange) for e in await collect(on_conv, "hi"))
+    assert not any(isinstance(e, ExpressionChange) for e in await collect(off_conv, "hi"))
+
+
+async def test_toggling_expression_between_turns(session, llm):
+    llm.chunks = ["[sad] Oh no."]
+    conv = session.converse(features=ON)
+    await collect(conv, "one")
+    conv.set_features(Features(expression=False))
+    events = await collect(conv, "two")
+
+    # off: no events, clean prompt, and the earlier tagged reply is sent back untagged
+    assert not any(isinstance(e, ExpressionChange) for e in events)
+    assert "[sad]" not in llm.calls[1][0]["content"]
+    assert {"role": "assistant", "content": "Oh no."} in llm.calls[1]
+
+    conv.set_features(ON)
+    await collect(conv, "three")
+    assert "[sad]" in llm.calls[2][0]["content"]
+    assert {"role": "assistant", "content": "[sad] Oh no."} in llm.calls[2]

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .features import Features
 from .llm.base import LLMProvider
 from .prefs import InteractionPrefs
 from .session import Learner, Session
@@ -12,6 +13,9 @@ class Engine:
         self._llm = llm
 
     def start_session(
-        self, learner: Learner, prefs: InteractionPrefs | None = None
+        self,
+        learner: Learner,
+        prefs: InteractionPrefs | None = None,
+        features: Features | None = None,
     ) -> Session:
-        return Session(learner, self._llm, prefs)
+        return Session(learner, self._llm, prefs, features)
