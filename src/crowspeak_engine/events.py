@@ -31,6 +31,13 @@ class TranscriptDelta(ConversationEvent):
 
 
 @dataclass(frozen=True, kw_only=True)
+class ExpressionChange(ConversationEvent):
+    """How the speaker is delivering what follows. Always precedes a turn's first text."""
+
+    label: str
+
+
+@dataclass(frozen=True, kw_only=True)
 class TurnCompleted(ConversationEvent):
     message: Message
 

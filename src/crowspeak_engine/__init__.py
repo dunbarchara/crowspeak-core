@@ -8,10 +8,13 @@ from .events import (
     ConversationEvent,
     EngineError,
     Event,
+    ExpressionChange,
     SessionStarted,
     TranscriptDelta,
     TurnCompleted,
 )
+from .expression import EXPRESSIONS
+from .features import Features
 from .llm.base import LLMProvider
 from .npc import Npc
 from .prefs import InteractionPrefs
@@ -23,9 +26,12 @@ __all__ = [
     "ConstraintError",
     "Conversation",
     "ConversationEvent",
+    "EXPRESSIONS",
     "Engine",
     "EngineError",
     "Event",
+    "ExpressionChange",
+    "Features",
     "InteractionPrefs",
     "LLMProvider",
     "LanguageProfile",

@@ -90,6 +90,7 @@ async for event in conversation.send_text("こんにちは"):
 | Event | Meaning |
 |---|---|
 | `TranscriptDelta(text, role, final)` | A streamed piece of the reply. One extra event with `final=True` closes the stream. |
+| `ExpressionChange(label)` | Only with the `expression` feature on. How the speaker is delivering what follows. Always precedes the turn's first text (`neutral` if the model emitted no tag); may recur mid-reply. |
 | `TurnCompleted(message)` | The full assistant message, after it has been added to history. |
 | `EngineError(message, recoverable)` | The provider failed. The pending user message was rolled back, so the conversation stays usable. |
 | `SessionStarted(learner_id)` | Built by `session.start_event()`. It is not yielded by a turn, so a gateway can send it when a client connects. |
@@ -98,7 +99,11 @@ Conversation events carry `session_id`, `conversation_id` and `speaker_id` (the 
 
 If a consumer stops consuming `send_text` mid-stream (task cancelled, client disconnects), `finally` cleanup keeps history coherent: the partial reply is kept as a `Message(..., interrupted=True)` if any chunks arrived, or the pending user message is rolled back if none did. No event is yielded for this — the disconnected consumer isn't listening — it only matters to a later reader of `history` (e.g. resuming a session, or the future gateway).
 
-`AgentAudioChunk`, `ExpressionChange` and `GrammarFeedback` from the architecture doc are deliberately not defined yet, since the doc doesn't specify their schemas and we'd be inventing them.
+**Speaker output and expression tags (opt-in feature).** With `Features(expression=True)` the speaker replies in plain streamed text with inline tags from a closed vocabulary (`EXPRESSIONS`: neutral, happy, sad, angry, surprised, thinking), e.g. `[happy] Bonjour! [thinking] Et toi ?`. `ExpressionTagParser` (`expression.py`) strips them incrementally (a tag may split across deltas) and the conversation turns them into `ExpressionChange` events, so clients and TTS adapters only ever see clean text. With the feature off (the default) the prompt has no tag instruction, no `ExpressionChange` is emitted, stray tags are still stripped, and the model is sent clean history. Unknown word-like tags are dropped and logged; other bracketed text is kept. `Message.content` is the clean text and `Message.raw` the tagged text, which is what is sent back to the LLM so it keeps following the format. This applies to the speaker only: other LLM calls (corrections, teaching) use structured JSON. Alternatives not chosen, kept as pivot options: JSON schema with the expression before the text; function calling such as `set_expression(label)`; post-hoc metadata events; native TTS cue passthrough (a variant done in the TTS adapter); neutral voice with animation-only emotion. See the Macro task "Add structured speaker output".
+
+**Features.** `Features` (`features.py`) holds opt-in capabilities and layers like `InteractionPrefs`: a session default (`start_session(..., features=)`, `set_features`) and a per-conversation override (`converse(..., features=)`, `Conversation.set_features`); `None` falls through, and the unset default is off. Flags are read at the start of each turn, so a change applies from the next turn. This is done in the engine (not by clients ignoring events) so a disabled feature costs no prompt tokens and no events. Voice will join as another field, but also needs STT/TTS adapters registered on the `Engine`; enabling it without one should fail fast. See the Macro task "Add engine feature toggles model".
+
+`AgentAudioChunk` and `GrammarFeedback` from the architecture doc are deliberately not defined yet, since the doc doesn't specify their schemas and we'd be inventing them.
 
 **Async and streaming from the start.** The target pipeline is async STT to LLM to TTS, and streaming deltas are what the doc's `TranscriptDelta` implies. Adding these later would change every caller.
 
@@ -145,7 +150,7 @@ These are intentionally open and are the first things to discuss after this foun
 
 - **Deliberate mistakes.** The "spot the beginner NPC's mistakes" game needs a behavior or role field on `Npc`, and probably a `GrammarFeedback` event. Today's adapters say "simplify", and realistic errors are new prompt content.
 - **Voice.** `send_audio`, plus `AgentAudioChunk` and VAD/STT/TTS orchestration.
-- **Structured LLM output.** `ExpressionChange` and `GrammarFeedback` imply parsing structured output. The Phase 1 latency target (under 1s) also needs measuring.
+- **Corrections.** `GrammarFeedback` will come from a separate analyzer LLM call with structured JSON output (speaker expression tags are done). The Phase 1 latency target (under 1s) also needs measuring.
 - **History growth.** History is replayed in full each turn, with no truncation or token budgeting.
 - **Persistence.** Sessions and conversations are in-memory only.
 - **Gateway and protocol.** A wire format for events (WebSocket) and a place for `SessionStarted` to be sent.
