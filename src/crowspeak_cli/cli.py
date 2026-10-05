@@ -62,7 +62,7 @@ def configure_learner() -> tuple[Learner, InteractionPrefs]:
 
     learner = Learner(LanguageProfile(native=native, target=target, proficiency=proficiency))
     prefs = InteractionPrefs(
-        user_input_language=native if input_side == "native" else target,
+        learner_input_language=native if input_side == "native" else target,
         npc_response_language=native if response_side == "native" else target,
     )
     return learner, prefs

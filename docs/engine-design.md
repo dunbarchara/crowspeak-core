@@ -29,6 +29,21 @@ Conversation                            learner <-> one Npc
                       └─ history: list[Message]    (per-Npc; resumes if you return)
 ```
 
+### Glossary
+
+Use these terms consistently in code, docs and tasks.
+
+| Term | Meaning |
+|---|---|
+| **Learner** | The human practicing a language, as a party in a session: a `LanguageProfile` plus an id. The engine has no accounts, so it never says "user". |
+| **User** | An account in a wrapper app (login, billing, a `users` table). Not an engine concept. A user maps to a Learner at the app boundary. |
+| **NPC** | The character the learner talks to: persona, `LanguageProfile`, optional constraints. |
+| **Speaker** | Only the generic "whoever is talking", as in `speaker_id` (an NPC id, or `"user"` for now; it will become the learner id, see the Macro task "Use learner id as speaker_id"). It never means the NPC or the NPC's LLM. |
+| **NPC reply** | The conversational LLM call that plays the NPC and streams its answer. Replaces the earlier "speaker" wording. |
+| **Analyzer** | A separate, structured-JSON LLM call that reviews the learner's input and runs beside the NPC reply (corrections now; vocab tracking and others later). It never speaks to the learner as a character. |
+| **Role** | `system` / `user` / `assistant` on `Message`: the OpenAI-protocol field, which keeps its wire names. `user` means the learner's messages there. |
+| **Session / Conversation** | World-level state for one learner, and one learner-NPC pairing with its history (see below). |
+
 ### Why Session is world-level and does not live inside Conversation
 
 The original design had a `Conversation` owning a `Session`. That fits a single chat, but not the sandbox we are building toward. There, the user loads in once with their language config and then walks up to many NPCs, each with their own persona, level and history, while the learner's config stays the same throughout. So:
@@ -50,7 +65,7 @@ This is what makes scenarios like "a non-native, beginner NPC the learner has to
 
 ## 4. Interaction preferences
 
-`InteractionPrefs(user_input_language, npc_response_language)` are free-form language codes. **Any combination is valid**: English in and Japanese out, Japanese in and English out, the same language both ways, or a third language. Learners switch modes for real reasons: practicing listening means responses in the target language, while practicing speaking may mean responses in the native language, to confirm they were understood.
+`InteractionPrefs(learner_input_language, npc_response_language)` are free-form language codes. **Any combination is valid**: English in and Japanese out, Japanese in and English out, the same language both ways, or a third language. Learners switch modes for real reasons: practicing listening means responses in the target language, while practicing speaking may mean responses in the native language, to confirm they were understood.
 
 Resolution runs most specific first: **conversation, then session, then natural default**. Preferences are mutable mid-session (`Session.set_prefs`, `Conversation.set_prefs`).
 
@@ -90,8 +105,10 @@ async for event in conversation.send_text("こんにちは"):
 | Event | Meaning |
 |---|---|
 | `TranscriptDelta(text, role, final)` | A streamed piece of the reply. One extra event with `final=True` closes the stream. |
-| `ExpressionChange(label)` | Only with the `expression` feature on. How the speaker is delivering what follows. Always precedes the turn's first text (`neutral` if the model emitted no tag); may recur mid-reply. |
+| `ExpressionChange(label)` | Only with the `expression` feature on. How the NPC is delivering what follows. Always precedes the turn's first text (`neutral` if the model emitted no tag); may recur mid-reply. |
 | `TurnCompleted(message)` | The full assistant message, after it has been added to history. |
+| `CorrectionsReady(message_id, corrections)` | Only with the `corrections` feature on (designed, task 4b). Feedback on the learner's message `message_id`, after `TurnCompleted`. |
+| `AnalyzerError(analyzer, message_id, message)` | An analyzer failed. Non-fatal: the conversation is unaffected. Distinct from `EngineError` so wrappers can tell them apart. |
 | `EngineError(message, recoverable)` | The provider failed. The pending user message was rolled back, so the conversation stays usable. |
 | `SessionStarted(learner_id)` | Built by `session.start_event()`. It is not yielded by a turn, so a gateway can send it when a client connects. |
 
@@ -99,11 +116,22 @@ Conversation events carry `session_id`, `conversation_id` and `speaker_id` (the 
 
 If a consumer stops consuming `send_text` mid-stream (task cancelled, client disconnects), `finally` cleanup keeps history coherent: the partial reply is kept as a `Message(..., interrupted=True)` if any chunks arrived, or the pending user message is rolled back if none did. No event is yielded for this — the disconnected consumer isn't listening — it only matters to a later reader of `history` (e.g. resuming a session, or the future gateway).
 
-**Speaker output and expression tags (opt-in feature).** With `Features(expression=True)` the speaker replies in plain streamed text with inline tags from a closed vocabulary (`EXPRESSIONS`: neutral, happy, sad, angry, surprised, thinking), e.g. `[happy] Bonjour! [thinking] Et toi ?`. `ExpressionTagParser` (`expression.py`) strips them incrementally (a tag may split across deltas) and the conversation turns them into `ExpressionChange` events, so clients and TTS adapters only ever see clean text. With the feature off (the default) the prompt has no tag instruction, no `ExpressionChange` is emitted, stray tags are still stripped, and the model is sent clean history. Unknown word-like tags are dropped and logged; other bracketed text is kept. `Message.content` is the clean text and `Message.raw` the tagged text, which is what is sent back to the LLM so it keeps following the format. This applies to the speaker only: other LLM calls (corrections, teaching) use structured JSON. Alternatives not chosen, kept as pivot options: JSON schema with the expression before the text; function calling such as `set_expression(label)`; post-hoc metadata events; native TTS cue passthrough (a variant done in the TTS adapter); neutral voice with animation-only emotion. See the Macro task "Add structured speaker output".
+**NPC output and expression tags (opt-in feature).** With `Features(expression=True)` the NPC replies in plain streamed text with inline tags from a closed vocabulary (`EXPRESSIONS`: neutral, happy, sad, angry, surprised, thinking), e.g. `[happy] ¡Hola! [thinking] ¿Y tú?`. `ExpressionTagParser` (`expression.py`) strips them incrementally (a tag may split across deltas) and the conversation turns them into `ExpressionChange` events, so clients and TTS adapters only ever see clean text. With the feature off (the default) the prompt has no tag instruction, no `ExpressionChange` is emitted, stray tags are still stripped, and the model is sent clean history. Unknown word-like tags are dropped and logged; other bracketed text is kept. `Message.content` is the clean text and `Message.raw` the tagged text, which is what is sent back to the LLM so it keeps following the format. This applies to the NPC's reply only: other LLM calls (corrections, teaching) use structured JSON. Alternatives not chosen, kept as pivot options: JSON schema with the expression before the text; function calling such as `set_expression(label)`; post-hoc metadata events; native TTS cue passthrough (a variant done in the TTS adapter); neutral voice with animation-only emotion. See the Macro task "Add structured NPC output".
 
 **Features.** `Features` (`features.py`) holds opt-in capabilities and layers like `InteractionPrefs`: a session default (`start_session(..., features=)`, `set_features`) and a per-conversation override (`converse(..., features=)`, `Conversation.set_features`); `None` falls through, and the unset default is off. Flags are read at the start of each turn, so a change applies from the next turn. This is done in the engine (not by clients ignoring events) so a disabled feature costs no prompt tokens and no events. Voice will join as another field, but also needs STT/TTS adapters registered on the `Engine`; enabling it without one should fail fast. See the Macro task "Add engine feature toggles model".
 
-`AgentAudioChunk` and `GrammarFeedback` from the architecture doc are deliberately not defined yet, since the doc doesn't specify their schemas and we'd be inventing them.
+**Corrections analyzer (designed, task 4b; not yet implemented).** The NPC never critiques, so feedback on the learner's own input comes from a separate analyzer LLM call that returns structured JSON. Decisions:
+
+- **Scope.** Learner turns only; the NPC is not corrected. It runs only when `Features.corrections` is on (default off) and the resolved input language is the learner's target language. Analyzer input is `(speaker, text)`, where the speaker is the learner or an NPC, so a future "spot the NPC's mistakes" analyzer is not blocked.
+- **Parallel, off the critical path.** The call starts when the learner's message is added and runs alongside the reply. After `TurnCompleted`, the turn stream yields `CorrectionsReady` or `AnalyzerError` and then ends. If the consumer disconnects, the analysis still finishes and is attached to history; it is cancelled if the turn is rolled back after a speaker error.
+- **Input.** The learner message plus the last 2-4 turns of history, each marked NPC or LEARNER, the target and native language (region codes such as `es-MX`) and the CEFR level. No persona. It analyzes the clean `Message.content`, and for voice that will be the transcript.
+- **Output.** `Corrections(language, original, corrected, is_correct, items, praise?)`. Each item has `original` (a quoted substring), `suggestion`, `span`, `category`, `severity`, `explanation`, `explanation_language` and an optional `confidence`. Categories are a closed set (grammar, vocabulary, spelling, naturalness, punctuation); severity is `error` or `suggestion`. The model returns the quoted substring and the engine computes `span`, because models count offsets badly. Explanations default to the learner's native language.
+- **Level-aware.** Fewer, gentler flags at A1-A2, with a cap on items. Valid regional variants (for example Mexican *ustedes*, *carro*, *platicar*) must not be flagged. Spelling and punctuation apply to text only; pronunciation needs audio and is a separate future analyzer.
+- **History.** The result is stored on the learner's `Message.corrections` (`None` means not analyzed, an empty result means nothing found), in memory only. Prompt building ignores it, so the NPC never sees the grading. Database persistence comes later.
+- **Failure.** Bad JSON or a provider error becomes a non-fatal `AnalyzerError` and never affects the conversation.
+- **Providers.** The analyzer has its own `LLMProvider`, configurable independently of the NPC's (accuracy matters more than speed here), and needs a JSON-schema capability that the streaming protocol doesn't have yet.
+
+`AgentAudioChunk` from the architecture doc is deliberately not defined yet, since the doc doesn't specify its schema and we'd be inventing it. `GrammarFeedback` is superseded by `Corrections` above.
 
 **Async and streaming from the start.** The target pipeline is async STT to LLM to TTS, and streaming deltas are what the doc's `TranscriptDelta` implies. Adding these later would change every caller.
 
@@ -150,7 +178,7 @@ These are intentionally open and are the first things to discuss after this foun
 
 - **Deliberate mistakes.** The "spot the beginner NPC's mistakes" game needs a behavior or role field on `Npc`, and probably a `GrammarFeedback` event. Today's adapters say "simplify", and realistic errors are new prompt content.
 - **Voice.** `send_audio`, plus `AgentAudioChunk` and VAD/STT/TTS orchestration.
-- **Corrections.** `GrammarFeedback` will come from a separate analyzer LLM call with structured JSON output (speaker expression tags are done). The Phase 1 latency target (under 1s) also needs measuring.
+- **Corrections.** Designed (see section 7) but not yet implemented (task 4b). The Phase 1 latency target (under 1s) also needs measuring.
 - **History growth.** History is replayed in full each turn, with no truncation or token budgeting.
 - **Persistence.** Sessions and conversations are in-memory only.
 - **Gateway and protocol.** A wire format for events (WebSocket) and a place for `SessionStarted` to be sent.

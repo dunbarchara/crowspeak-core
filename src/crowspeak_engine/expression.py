@@ -1,6 +1,6 @@
-"""Expression tags in the speaker's streamed reply, e.g. ``[happy] Bonjour!``.
+"""Expression tags in the NPC's streamed reply, e.g. ``[happy] Bonjour!``.
 
-The speaker LLM prefixes its text with bracketed labels from a closed vocabulary. This
+The NPC's LLM prefixes its text with bracketed labels from a closed vocabulary. This
 parser strips them from the stream incrementally and reports them separately, so clients
 and TTS adapters get clean text plus a typed expression signal.
 """

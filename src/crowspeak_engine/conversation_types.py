@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import uuid
+from dataclasses import dataclass, field
 from typing import Literal
+
+from .corrections import Corrections
 
 Role = Literal["system", "user", "assistant"]
 
@@ -18,3 +21,9 @@ class Message:
     # The model's output with expression tags intact (assistant turns only). `content`
     # is the clean text; `raw` is what goes back to the LLM so it keeps the tag format.
     raw: str | None = None
+    # Identifies the message so late results (corrections) can be matched to it.
+    # Not part of equality: two messages with the same text are equal.
+    id: str = field(default_factory=lambda: str(uuid.uuid4()), compare=False)
+    # Feedback on a learner message. None = not analyzed; an empty result = nothing found.
+    # Never sent to the NPC's LLM.
+    corrections: Corrections | None = None
