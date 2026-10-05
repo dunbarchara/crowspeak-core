@@ -1,5 +1,5 @@
 """The analyzer stage: separate LLM calls that look at the learner's input and return
-structured results, off the speaker's critical path."""
+structured results, off the NPC reply's critical path."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import Literal, Protocol
 from ..corrections import Corrections
 from ..proficiency import Proficiency
 
-# (who said it, what they said). The speaker label is not a persona or an id.
+# (who said it, what they said). The label is not a persona or an id.
 Turn = tuple[Literal["NPC", "LEARNER"], str]
 
 

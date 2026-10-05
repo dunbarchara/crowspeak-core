@@ -21,7 +21,7 @@ class SessionStarted(Event):
 @dataclass(frozen=True, kw_only=True)
 class ConversationEvent(Event):
     conversation_id: str
-    speaker_id: str  # npc id, or "user"
+    speaker_id: str  # whoever is talking: an npc id, or "user" (to become the learner id)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -33,7 +33,7 @@ class TranscriptDelta(ConversationEvent):
 
 @dataclass(frozen=True, kw_only=True)
 class ExpressionChange(ConversationEvent):
-    """How the speaker is delivering what follows. Always precedes a turn's first text."""
+    """How the NPC is delivering what follows. Always precedes a turn's first text."""
 
     label: str
 

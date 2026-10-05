@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True)
 class Features:
-    # Ask the speaker for expression tags and emit ExpressionChange events.
+    # Ask the NPC for expression tags and emit ExpressionChange events.
     expression: bool | None = None
     # Run the corrections analyzer on learner messages and emit CorrectionsReady events.
     corrections: bool | None = None

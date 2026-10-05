@@ -25,5 +25,5 @@ class Message:
     # Not part of equality: two messages with the same text are equal.
     id: str = field(default_factory=lambda: str(uuid.uuid4()), compare=False)
     # Feedback on a learner message. None = not analyzed; an empty result = nothing found.
-    # Never sent to the speaker LLM.
+    # Never sent to the NPC's LLM.
     corrections: Corrections | None = None

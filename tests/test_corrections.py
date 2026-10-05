@@ -20,15 +20,15 @@ from crowspeak_engine.proficiency_adapters import get_adapter
 
 from conftest import GOOD_ANALYSIS, SPANISH_TEXT, FakeAnalyzerLLM, FakeLLM
 
-ES_PREFS = InteractionPrefs(user_input_language="es-MX", npc_response_language="es-MX")
+ES_PREFS = InteractionPrefs(learner_input_language="es-MX", npc_response_language="es-MX")
 
 
-def make(es_learner, speaker=None, analyzer=None, features=Features(corrections=True)):
-    speaker = speaker or FakeLLM(chunks=("¡Hola!",))
+def make(es_learner, npc_llm=None, analyzer=None, features=Features(corrections=True)):
+    npc_llm = npc_llm or FakeLLM(chunks=("¡Hola!",))
     analyzer = analyzer or FakeAnalyzerLLM()
-    engine = Engine(speaker, analyzer_llm=analyzer)
+    engine = Engine(npc_llm, analyzer_llm=analyzer)
     session = engine.start_session(es_learner, ES_PREFS, features)
-    return session.converse(), speaker, analyzer
+    return session.converse(), npc_llm, analyzer
 
 
 async def collect(conv, text=SPANISH_TEXT):
@@ -154,7 +154,7 @@ def test_prompt_has_no_persona_marks_history_and_names_the_message():
 
 
 async def test_corrections_follow_turn_completed_and_attach_to_the_message(es_learner):
-    conv, speaker, analyzer = make(es_learner)
+    conv, npc_llm, analyzer = make(es_learner)
 
     events = await collect(conv)
 
@@ -165,16 +165,16 @@ async def test_corrections_follow_turn_completed_and_attach_to_the_message(es_le
     assert ready.message_id == user_msg.id
     assert ready.speaker_id == "user" and ready.conversation_id == conv.conversation_id
     assert user_msg.corrections == ready.corrections
-    assert conv.history[1].corrections is None  # the speaker is never corrected
+    assert conv.history[1].corrections is None  # the NPC is never corrected
     assert len(analyzer.calls) == 1
 
 
-async def test_speaker_never_sees_corrections(es_learner):
-    conv, speaker, _ = make(es_learner)
+async def test_npc_never_sees_corrections(es_learner):
+    conv, npc_llm, _ = make(es_learner)
     await collect(conv)
     await collect(conv, "Hola otra vez")
 
-    sent = json.dumps(speaker.calls[-1], ensure_ascii=False)
+    sent = json.dumps(npc_llm.calls[-1], ensure_ascii=False)
     assert "unas manzanas" not in sent and "explanation" not in sent
 
 
@@ -207,7 +207,7 @@ async def test_off_by_default_makes_no_analyzer_call(es_learner):
 
 async def test_skipped_when_learner_writes_in_their_native_language(es_learner):
     engine = Engine(FakeLLM(), analyzer_llm=FakeAnalyzerLLM())
-    prefs = InteractionPrefs(user_input_language="en", npc_response_language="es-MX")
+    prefs = InteractionPrefs(learner_input_language="en", npc_response_language="es-MX")
     conv = engine.start_session(es_learner, prefs, Features(corrections=True)).converse()
 
     events = await collect(conv, "I went to the market")
@@ -233,7 +233,7 @@ async def test_enabling_corrections_without_a_json_provider_fails_fast(es_learne
     assert conv.history == []
 
 
-async def test_analyzer_defaults_to_the_speaker_provider(es_learner):
+async def test_analyzer_defaults_to_the_npc_provider(es_learner):
     class Both(FakeLLM, FakeAnalyzerLLM):
         def __init__(self):
             FakeLLM.__init__(self, chunks=("Hola",))
@@ -300,16 +300,16 @@ async def test_cancelling_the_consumer_while_waiting_does_not_cancel_the_analysi
     assert not analyzer.cancelled
 
 
-async def test_speaker_error_rolls_back_and_cancels_the_analysis(es_learner):
-    class SlowFailingSpeaker(FakeLLM):
+async def test_npc_error_rolls_back_and_cancels_the_analysis(es_learner):
+    class SlowFailingNpcLLM(FakeLLM):
         async def stream(self, messages):
-            await asyncio.sleep(0)  # let the analysis start before the speaker fails
+            await asyncio.sleep(0)  # let the analysis start before the NPC reply fails
             raise RuntimeError("down")
             yield  # pragma: no cover
 
     gate = asyncio.Event()
     analyzer = FakeAnalyzerLLM(gate=gate)
-    conv, _, _ = make(es_learner, speaker=SlowFailingSpeaker(), analyzer=analyzer)
+    conv, _, _ = make(es_learner, npc_llm=SlowFailingNpcLLM(), analyzer=analyzer)
 
     events = await collect(conv)
     await asyncio.sleep(0)

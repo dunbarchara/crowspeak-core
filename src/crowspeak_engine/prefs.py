@@ -17,7 +17,7 @@ class InteractionPrefs:
     natural default" (see `resolve_prefs`).
     """
 
-    user_input_language: str | None = None
+    learner_input_language: str | None = None
     npc_response_language: str | None = None
 
 
@@ -43,7 +43,7 @@ def resolve_prefs(
     explicit values that violate them raise ConstraintError.
     """
     given = [p for p in prefs if p is not None]
-    input_lang = next((p.user_input_language for p in given if p.user_input_language), None)
+    input_lang = next((p.learner_input_language for p in given if p.learner_input_language), None)
     response_lang = next((p.npc_response_language for p in given if p.npc_response_language), None)
 
     if input_lang is None:
