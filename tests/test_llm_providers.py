@@ -76,3 +76,37 @@ def test_factory_rejects_unknown_provider(monkeypatch):
 
     with pytest.raises(ValueError, match="azure, local"):
         provider_from_env()
+
+
+async def test_complete_json_sends_strict_schema_and_returns_text():
+    from crowspeak_engine.llm._openai_stream import complete_json
+
+    reply = SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content='{"a": 1}'))])
+    calls = []
+
+    async def create(**kwargs):
+        calls.append(kwargs)
+        return reply
+
+    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
+    schema = {"type": "object"}
+
+    out = await complete_json(client, "m", [{"role": "user", "content": "hi"}], schema)
+
+    assert out == '{"a": 1}'
+    assert "stream" not in calls[0]
+    assert calls[0]["response_format"]["json_schema"] == {
+        "name": "analysis",
+        "schema": schema,
+        "strict": True,
+    }
+
+
+def test_both_adapters_expose_complete_json():
+    from crowspeak_engine.llm.base import JSONProvider  # noqa: F401
+
+    assert hasattr(LocalOpenAIProvider(), "complete_json")
+    assert hasattr(
+        AzureOpenAIProvider(endpoint="https://x.openai.azure.com/", api_key="k", deployment="d"),
+        "complete_json",
+    )

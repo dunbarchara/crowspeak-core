@@ -59,4 +59,8 @@ _GENERIC_FALLBACK: dict[Proficiency, str] = {
 
 def get_adapter(target_language: str, proficiency: Proficiency) -> str:
     """Return the system-prompt instruction fragment for a language/level pair."""
-    return _ADAPTERS.get(target_language, {}).get(proficiency, _GENERIC_FALLBACK[proficiency])
+    # A region code ("es-MX") falls back to its base language ("es") before the generic text.
+    for code in (target_language, target_language.split("-")[0]):
+        if proficiency in _ADAPTERS.get(code, {}):
+            return _ADAPTERS[code][proficiency]
+    return _GENERIC_FALLBACK[proficiency]

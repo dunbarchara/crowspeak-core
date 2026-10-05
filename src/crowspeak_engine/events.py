@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from .conversation_types import Message, Role
+from .corrections import Corrections
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -46,3 +47,20 @@ class TurnCompleted(ConversationEvent):
 class EngineError(ConversationEvent):
     message: str
     recoverable: bool = True
+
+
+@dataclass(frozen=True, kw_only=True)
+class CorrectionsReady(ConversationEvent):
+    """Feedback on the learner's message `message_id`. Follows that turn's TurnCompleted."""
+
+    message_id: str
+    corrections: Corrections
+
+
+@dataclass(frozen=True, kw_only=True)
+class AnalyzerError(ConversationEvent):
+    """An analyzer failed. Non-fatal: the conversation itself is unaffected."""
+
+    analyzer: str
+    message_id: str
+    message: str

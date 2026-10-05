@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import asyncio
+import dataclasses
 import uuid
 from typing import TYPE_CHECKING, AsyncIterator
 
+from .analyzers import AnalyzerContext, CorrectionsAnalyzer, Turn
 from .conversation_types import Message
+from .corrections import Corrections
 from .events import (
+    AnalyzerError,
     ConversationEvent,
+    CorrectionsReady,
     EngineError,
     Event,
     ExpressionChange,
@@ -24,6 +30,9 @@ from .prompts import build_system_prompt
 if TYPE_CHECKING:
     from .session import Session
 
+# How many earlier messages the analyzer sees as context (it reviews only the newest one).
+ANALYZER_HISTORY = 4
+
 
 class Conversation:
     """Owns the per-Npc history and turn loop. Learner config and default prefs
@@ -36,6 +45,7 @@ class Conversation:
         llm: LLMProvider,
         prefs: InteractionPrefs | None = None,
         features: Features | None = None,
+        analyzer_llm: LLMProvider | None = None,
     ) -> None:
         self.conversation_id = str(uuid.uuid4())
         self.session = session
@@ -44,6 +54,8 @@ class Conversation:
         self._llm = llm
         self._prefs = prefs
         self._features = features
+        self._analyzer_llm = analyzer_llm or llm
+        self._analysis_tasks: set[asyncio.Task] = set()  # keeps tasks alive until done
         self.resolve()  # fail fast on constraint violations
 
     @property
@@ -99,9 +111,62 @@ class Conversation:
             "speaker_id": speaker_id,
         }
 
+    def _corrections_analyzer(self) -> CorrectionsAnalyzer | None:
+        """The analyzer to run on a learner message this turn, or None if not applicable."""
+        if not self.resolved_features().corrections:
+            return None
+        learner = self.session.learner.language
+        if self.resolve()[0] != learner.target:
+            return None  # the learner isn't expected to write in their target language
+        if not hasattr(self._analyzer_llm, "complete_json"):
+            raise ValueError(
+                "Features.corrections needs an analyzer LLM with complete_json() "
+                "(pass analyzer_llm= to Engine)"
+            )
+        return CorrectionsAnalyzer(self._analyzer_llm)
+
+    def _attach_corrections(self, message_id: str, corrections: Corrections) -> None:
+        for i, m in enumerate(self.history):
+            if m.id == message_id:
+                self.history[i] = dataclasses.replace(m, corrections=corrections)
+                return  # (not found: the turn was rolled back; nothing to attach to)
+
+    def _start_analysis(
+        self, analyzer: CorrectionsAnalyzer, message: Message, earlier: list[Message]
+    ) -> asyncio.Task:
+        learner = self.session.learner.language
+        turns: tuple[Turn, ...] = tuple(
+            ("LEARNER" if m.role == "user" else "NPC", m.content)
+            for m in earlier[-ANALYZER_HISTORY:]
+            if m.role != "system"
+        )
+        context = AnalyzerContext(
+            text=message.content,
+            history=turns,
+            target_language=learner.target,
+            native_language=learner.native,
+            proficiency=learner.proficiency,
+        )
+
+        async def run() -> Corrections:
+            result = await analyzer.analyze(context)
+            # Attached here, not by the consumer, so it lands even if the consumer left.
+            self._attach_corrections(message.id, result)
+            return result
+
+        task = asyncio.create_task(run())
+        self._analysis_tasks.add(task)
+        task.add_done_callback(self._analysis_tasks.discard)
+        return task
+
     async def send_text(self, text: str) -> AsyncIterator[Event]:
         """Send a learner message and stream the Npc's reply as events."""
-        self.history.append(Message(role="user", content=text))
+        analyzer = self._corrections_analyzer()  # may raise: fail before touching history
+        user_message = Message(role="user", content=text)
+        analysis = (
+            self._start_analysis(analyzer, user_message, list(self.history)) if analyzer else None
+        )
+        self.history.append(user_message)
         ids = self._ids(self.npc.id)
         chunks: list[str] = []  # clean text, tags stripped
         raw_chunks: list[str] = []  # as the model produced it
@@ -141,6 +206,8 @@ class Conversation:
                 settled = True
             except Exception as e:
                 self.history.pop()
+                if analysis:
+                    analysis.cancel()  # the message it was about is gone
                 yield EngineError(message=str(e), recoverable=True, **ids)
                 settled = True
                 return
@@ -161,6 +228,8 @@ class Conversation:
                     )
                 else:
                     self.history.pop()
+                    if analysis:
+                        analysis.cancel()
 
         if emit_expression and not expressed:  # reply with no text at all
             yield ExpressionChange(label=DEFAULT_EXPRESSION, **ids)
@@ -168,3 +237,17 @@ class Conversation:
         self.history.append(message)
         yield TranscriptDelta(text="", role="assistant", final=True, **ids)
         yield TurnCompleted(message=message, **ids)
+
+        if analysis is not None:
+            user_ids = self._ids("user")
+            try:
+                # Shielded so a consumer that leaves here doesn't cancel the analysis.
+                corrections = await asyncio.shield(analysis)
+            except Exception as e:
+                yield AnalyzerError(
+                    analyzer=analyzer.name, message_id=user_message.id, message=str(e), **user_ids
+                )
+            else:
+                yield CorrectionsReady(
+                    message_id=user_message.id, corrections=corrections, **user_ids
+                )

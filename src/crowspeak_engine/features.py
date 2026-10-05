@@ -16,11 +16,14 @@ from dataclasses import dataclass
 class Features:
     # Ask the speaker for expression tags and emit ExpressionChange events.
     expression: bool | None = None
+    # Run the corrections analyzer on learner messages and emit CorrectionsReady events.
+    corrections: bool | None = None
 
 
 @dataclass(frozen=True)
 class ResolvedFeatures:
     expression: bool = False
+    corrections: bool = False
 
 
 def resolve_features(*features: Features | None) -> ResolvedFeatures:
@@ -30,4 +33,6 @@ def resolve_features(*features: Features | None) -> ResolvedFeatures:
     def pick(name: str, default: bool) -> bool:
         return next((v for f in given if (v := getattr(f, name)) is not None), default)
 
-    return ResolvedFeatures(expression=pick("expression", False))
+    return ResolvedFeatures(
+        expression=pick("expression", False), corrections=pick("corrections", False)
+    )

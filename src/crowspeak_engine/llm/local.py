@@ -7,7 +7,7 @@ from typing import AsyncIterator
 
 from openai import AsyncOpenAI
 
-from ._openai_stream import stream_deltas
+from ._openai_stream import complete_json, stream_deltas
 
 DEFAULT_BASE_URL = "http://localhost:11434/v1"
 DEFAULT_MODEL = "llama3.1"
@@ -39,3 +39,6 @@ class LocalOpenAIProvider:
     async def stream(self, messages: list[dict]) -> AsyncIterator[str]:
         async for delta in stream_deltas(self._client, self._model, messages):
             yield delta
+
+    async def complete_json(self, messages: list[dict], schema: dict) -> str:
+        return await complete_json(self._client, self._model, messages, schema)
