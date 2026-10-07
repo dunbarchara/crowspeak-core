@@ -62,7 +62,9 @@ SCHEMA = {
 def build_prompt(ctx: AnalyzerContext) -> list[dict]:
     level = ctx.proficiency
     limits = f"Only flag what a {level.value} learner should reasonably get right, and report "
-    limits += f"at most {MAX_ITEMS[level]} items, most important first. {_LEVEL_HINT.get(level, '')}"
+    limits += (
+        f"at most {MAX_ITEMS[level]} items, most important first. {_LEVEL_HINT.get(level, '')}"
+    )
     system = "\n".join(
         [
             f"You are a language teacher reviewing ONE message written by a learner of "

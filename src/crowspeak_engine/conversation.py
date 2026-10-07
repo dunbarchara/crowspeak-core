@@ -12,7 +12,6 @@ from .conversation_types import Message
 from .corrections import Corrections
 from .events import (
     AnalyzerError,
-    ConversationEvent,
     CorrectionsReady,
     EngineError,
     Event,

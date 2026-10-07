@@ -14,7 +14,6 @@ from crowspeak_engine import (
     TurnCompleted,
 )
 
-
 ON = Features(expression=True)
 
 

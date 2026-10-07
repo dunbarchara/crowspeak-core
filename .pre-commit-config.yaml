@@ -1,0 +1,43 @@
+# Run `pre-commit install` once after cloning to activate these hooks locally.
+# CI runs `pre-commit run --all-files` on every PR.
+
+repos:
+  # Secret scanning: blocks commits containing API keys, tokens, or credentials.
+  # Highest-value hook: the only layer that stops secrets entering git history at all.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  # Python linting + formatting.
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.10
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^(src|tests)/.*\.py$
+      - id: ruff-format
+        files: ^(src|tests)/.*\.py$
+
+  # Standard hygiene hooks.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+
+  # PLACEHOLDER: add language hooks here when other stacks join this repo
+  # (e.g. a TypeScript SDK would get a local `npm run lint` hook scoped with `files:`).
+
+exclude: |
+  (?x)^(
+    \.venv/.*|
+    \.pytest_cache/.*|
+    .*\.egg-info/.*|
+    build/.*|
+    dist/.*|
+    uv\.lock
+  )$

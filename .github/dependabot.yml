@@ -1,0 +1,57 @@
+version: 2
+
+updates:
+  # --- PYTHON (uv) ---
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      python-deps:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # --- GITHUB ACTIONS ---
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      actions-deps:
+        patterns:
+          - "*"
+
+  # --- PRE-COMMIT HOOK REVS ---
+  - package-ecosystem: pre-commit
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      pre-commit-deps:
+        patterns:
+          - "*"
+
+  # PLACEHOLDER: enable when a Dockerfile exists.
+  # - package-ecosystem: docker
+  #   directory: /
+  #   schedule:
+  #     interval: weekly
+  #     day: monday
+  #   open-pull-requests-limit: 5
+
+  # PLACEHOLDER: enable when Terraform exists.
+  # - package-ecosystem: terraform
+  #   directory: /infra
+  #   schedule:
+  #     interval: weekly
+  #     day: monday
+  #   open-pull-requests-limit: 5

@@ -75,7 +75,9 @@ def _load_persona(value: str | None) -> str | None:
     return path.read_text(encoding="utf-8").strip() if path.is_file() else value
 
 
-async def _chat(engine: Engine, learner: Learner, prefs: InteractionPrefs, persona: str | None) -> None:
+async def _chat(
+    engine: Engine, learner: Learner, prefs: InteractionPrefs, persona: str | None
+) -> None:
     session = engine.start_session(learner, prefs)
     conversation = session.converse(
         Npc.default(native_language=learner.language.target, persona=persona)

@@ -30,15 +30,22 @@ def test_conversation_overrides_session(learner):
 
 def test_constrained_npc_natural_default_adapts(learner):
     npc = Npc(
-        id="x", name="X", persona="p", language=LanguageProfile(native="ja"),
-        understands=frozenset({"ja"}), speaks=frozenset({"ja"}),
+        id="x",
+        name="X",
+        persona="p",
+        language=LanguageProfile(native="ja"),
+        understands=frozenset({"ja"}),
+        speaks=frozenset({"ja"}),
     )
     assert resolve_prefs(learner.language, npc) == ("ja", "ja")
 
 
 def test_explicit_prefs_violating_constraints_raise(learner):
     npc = Npc(
-        id="x", name="X", persona="p", language=LanguageProfile(native="ja"),
+        id="x",
+        name="X",
+        persona="p",
+        language=LanguageProfile(native="ja"),
         understands=frozenset({"ja"}),
     )
     with pytest.raises(ConstraintError):
@@ -47,7 +54,9 @@ def test_explicit_prefs_violating_constraints_raise(learner):
 
 def test_non_native_beginner_npc_speaks_learners_target(learner):
     npc = Npc(
-        id="b", name="Bo", persona="p",
+        id="b",
+        name="Bo",
+        persona="p",
         language=LanguageProfile(native="en", target="ja", proficiency=Proficiency.A1),
     )
     assert resolve_prefs(learner.language, npc) == ("en", "ja")
