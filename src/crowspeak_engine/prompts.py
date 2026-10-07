@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Sequence
 
 from .npc import Npc
-from .profile import LanguageProfile
 from .proficiency_adapters import get_adapter
+from .profile import LanguageProfile
 
 
 def _describe(name: str, p: LanguageProfile) -> str:

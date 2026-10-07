@@ -2,11 +2,12 @@ import asyncio
 import json
 
 import pytest
+from conftest import GOOD_ANALYSIS, SPANISH_TEXT, FakeAnalyzerLLM, FakeLLM
 
 from crowspeak_engine import (
     AnalyzerError,
-    CorrectionsReady,
     Corrections,
+    CorrectionsReady,
     Engine,
     EngineError,
     Features,
@@ -17,8 +18,6 @@ from crowspeak_engine.analyzers import AnalysisError, AnalyzerContext
 from crowspeak_engine.analyzers.corrections import MAX_ITEMS, build_prompt, parse_corrections
 from crowspeak_engine.proficiency import Proficiency
 from crowspeak_engine.proficiency_adapters import get_adapter
-
-from conftest import GOOD_ANALYSIS, SPANISH_TEXT, FakeAnalyzerLLM, FakeLLM
 
 ES_PREFS = InteractionPrefs(learner_input_language="es-MX", npc_response_language="es-MX")
 

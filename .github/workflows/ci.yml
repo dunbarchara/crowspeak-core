@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# Least privilege: jobs only read the repo.
+permissions:
+  contents: read
+
+jobs:
+  # ─── pre-commit ───────────────────────────────────────────────────────────
+  # Runs every hook (gitleaks, ruff, hygiene) so `git commit --no-verify` is caught.
+  pre-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # gitleaks scans full history
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+      - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd # v3.0.1
+
+  # ─── test ─────────────────────────────────────────────────────────────────
+  # Live (Azure) tests are deselected by default via pyproject addopts, so this
+  # job never touches the network or spends money.
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --frozen --extra dev --extra cli
+      - run: uv run ruff check .
+      # SAST (Python)
+      - run: uv run bandit -r src -ll -q
+      - run: uv run pytest
+
+  # ─── audit ────────────────────────────────────────────────────────────────
+  # Dependency CVE audit. Any --ignore-vuln must carry an inline reason and a
+  # date to revisit.
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - run: uv sync --frozen --extra dev --extra cli
+      - run: uv run pip-audit
+
+  # ─── PLACEHOLDER: container scan ──────────────────────────────────────────
+  # Enable when a Dockerfile exists. Scan BEFORE any push.
+  # container:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  #     - run: docker build -t crowspeak-core:ci .
+  #     - uses: aquasecurity/trivy-action@<full-sha> # vX.Y.Z (pin when enabling)
+  #       with:
+  #         image-ref: crowspeak-core:ci
+  #         exit-code: "1"
+  #         severity: CRITICAL
+  #         ignore-unfixed: true
+
+  # ─── PLACEHOLDER: IaC scan ────────────────────────────────────────────────
+  # Enable when Terraform/Bicep exists. Keep the checkov skip list documented
+  # in a config file (see tailord's infra/providers/azure/.checkov.yaml).
+  # infra:
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+  #     - run: pipx run checkov==<pinned> -d infra/ --compact --quiet --config-file infra/.checkov.yaml

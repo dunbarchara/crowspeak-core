@@ -62,7 +62,5 @@ def resolve_prefs(
             f"{npc.name} only understands {sorted(npc.understands)}, not {input_lang!r}"
         )
     if npc.speaks is not None and response_lang not in npc.speaks:
-        raise ConstraintError(
-            f"{npc.name} only speaks {sorted(npc.speaks)}, not {response_lang!r}"
-        )
+        raise ConstraintError(f"{npc.name} only speaks {sorted(npc.speaks)}, not {response_lang!r}")
     return input_lang, response_lang

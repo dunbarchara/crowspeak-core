@@ -1,0 +1,25 @@
+# PLACEHOLDER: periodic deep scans. The schedule trigger is commented out, so this
+# only runs when started by hand (workflow_dispatch). Uncomment `schedule:` to enable.
+name: Scheduled scan
+
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  deep-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # full history for gitleaks
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      # Full-history gitleaks scan (the pre-commit hook only scans staged changes).
+      # Keep the image tag in step with the gitleaks rev in .pre-commit-config.yaml.
+      - run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 git /repo --no-banner
+      - run: uv sync --frozen --extra dev --extra cli
+      - run: uv run pip-audit
