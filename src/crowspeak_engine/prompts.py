@@ -8,11 +8,21 @@ from .npc import Npc
 from .proficiency_adapters import get_adapter
 from .profile import LanguageProfile
 
+# Feedback on the other person's language comes from analyzers, never from the Npc, so the
+# prompt must not cast the Npc as a teacher. Markdown is banned because clients render the
+# reply as plain text (terminal, speech bubble, TTS).
+_CONDUCT = (
+    "Have a natural conversation, the way a person would. Do not teach: never correct "
+    "mistakes, point out errors, or explain grammar or vocabulary unless you are asked "
+    "to directly. Just understand what they meant and reply to it. Reply in plain text "
+    "only, with no markdown, bold, or bullet lists."
+)
+
 
 def _describe(name: str, p: LanguageProfile) -> str:
     text = f"{name} natively speaks {p.native}"
     if p.target:
-        text += f" and is learning {p.target} at CEFR level {p.proficiency.value}"
+        text += f" and speaks {p.target} at CEFR level {p.proficiency.value}"
     return text + "."
 
 
@@ -25,10 +35,11 @@ def build_system_prompt(
 ) -> str:
     parts = [
         npc.persona,
-        _describe("The learner", learner),
+        _describe("The person you are talking with", learner),
         _describe(f"You ({npc.name})", npc.language),
-        f"The learner will write to you in {input_language}; "
+        f"They will write to you in {input_language}; "
         f"you must respond only in {response_language}.",
+        _CONDUCT,
     ]
 
     # Calibrate to whoever's level matters for the language being spoken: an Npc
@@ -42,8 +53,8 @@ def build_system_prompt(
 
     if npc.understands is not None:
         parts.append(
-            f"You only understand {', '.join(sorted(npc.understands))}. If the learner "
-            "writes in any other language, say in character that you don't understand."
+            f"You only understand {', '.join(sorted(npc.understands))}. If they "
+            "write in any other language, say in character that you don't understand."
         )
     if npc.speaks is not None:
         parts.append(f"You only speak {', '.join(sorted(npc.speaks))}.")

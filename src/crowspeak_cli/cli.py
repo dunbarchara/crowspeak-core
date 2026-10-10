@@ -8,15 +8,21 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from crowspeak_cli import render
 from crowspeak_engine import (
+    AnalyzerError,
+    CorrectionsReady,
     Engine,
     EngineError,
+    Features,
     InteractionPrefs,
     LanguageProfile,
     Learner,
+    Message,
     Npc,
     Proficiency,
     TranscriptDelta,
+    TurnCompleted,
 )
 from crowspeak_engine.llm import provider_from_env
 
@@ -75,16 +81,59 @@ def _load_persona(value: str | None) -> str | None:
     return path.read_text(encoding="utf-8").strip() if path.is_file() else value
 
 
+def _use_color(stream) -> bool:
+    """Color only for a real terminal, and never when NO_COLOR is set (no-color.org)."""
+    return stream.isatty() and not os.environ.get("NO_COLOR")
+
+
+def _review(history: list[Message], arg: str, color: bool) -> str:
+    """Corrections for the learner's last message, or the Nth (1-based) with `/review N`."""
+    learner_messages = [m for m in history if m.role == "user"]
+    if not learner_messages:
+        return "Nothing to review yet."
+    if arg:
+        try:
+            index = int(arg)
+        except ValueError:
+            return "Usage: /review [N]"
+        if not 1 <= index <= len(learner_messages):
+            return f"No message {index}; you have written {len(learner_messages)}."
+    else:
+        index = len(learner_messages)
+    message = learner_messages[index - 1]
+    if message.corrections is None:
+        return (
+            f"Message {index} was not analyzed "
+            "(corrections need --corrections and a message in your target language)."
+        )
+    return render.format_corrections(message.corrections, color)
+
+
 async def _chat(
-    engine: Engine, learner: Learner, prefs: InteractionPrefs, persona: str | None
+    engine: Engine,
+    learner: Learner,
+    prefs: InteractionPrefs,
+    persona: str | None,
+    corrections: bool,
+    color: bool,
 ) -> None:
-    session = engine.start_session(learner, prefs)
+    features = Features(corrections=True) if corrections else None
+    session = engine.start_session(learner, prefs, features)
     conversation = session.converse(
         Npc.default(native_language=learner.language.target, persona=persona)
     )
     name = conversation.npc.name.lower()
 
-    print("\nCrowSpeak chat. Type 'exit' or Ctrl+C to quit.\n")
+    print("\nCrowSpeak chat. Type 'exit' or Ctrl+C to quit.")
+    if corrections:
+        if conversation.resolve()[0] != learner.language.target:
+            print(
+                f"Note: corrections only run when you write in {learner.language.target}; "
+                "none will appear with these settings."
+            )
+        print("Corrections are on: a one-line summary follows each reply.")
+        print("Type /review [N] for the details of your last (or Nth) message.")
+    print()
 
     while True:
         try:
@@ -97,23 +146,49 @@ async def _chat(
             continue
         if user_input.lower() in ("exit", "quit"):
             return
+        command, _, arg = user_input.partition(" ")
+        if command.lower() == "/review":
+            print(_review(conversation.history, arg.strip(), color), "\n")
+            continue
 
-        started = False
+        line_open = False  # True while the NPC's reply is mid-line
         async for event in conversation.send_text(user_input):
             if isinstance(event, TranscriptDelta):
-                if not started:
+                if not line_open:
                     print(f"{name}> ", end="")
-                    started = True
+                    line_open = True
                 print(event.text, end="", flush=True)
+            elif isinstance(event, TurnCompleted):
+                print()  # end the reply; corrections, if any, follow
+                line_open = False
+            elif isinstance(event, CorrectionsReady):
+                # Quiet by default: one line, with the message number to pass to /review.
+                learner_ids = [m.id for m in conversation.history if m.role == "user"]
+                number = (
+                    learner_ids.index(event.message_id) + 1
+                    if event.message_id in learner_ids
+                    else None
+                )
+                print(render.format_summary(event.corrections, number, color))
+            elif isinstance(event, AnalyzerError):
+                print(render.format_analyzer_error(event, color))
             elif isinstance(event, EngineError):
+                if line_open:
+                    print()
                 print(f"error: {event.message}")
-        print("\n")
+                line_open = False
+        print()
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="crowspeak-cli")
     parser.add_argument(
         "--persona", help="Persona text, or path to a file containing it (default: generic partner)"
+    )
+    parser.add_argument(
+        "--corrections",
+        action="store_true",
+        help="Show feedback on your messages after each reply (needs a JSON-capable LLM)",
     )
     parser.add_argument(
         "--debug", action="store_true", help="Print which LLM provider/model is in use"
@@ -135,7 +210,9 @@ def main() -> None:
     engine = Engine(llm)
     learner, prefs = configure_learner()
     try:
-        asyncio.run(_chat(engine, learner, prefs, persona))
+        asyncio.run(
+            _chat(engine, learner, prefs, persona, args.corrections, _use_color(sys.stdout))
+        )
     except KeyboardInterrupt:
         print("\nbye")
 

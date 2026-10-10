@@ -48,6 +48,14 @@ def test_constraints_appear_in_prompt(session):
     assert "only understand ja" in prompt and "only speak ja" in prompt
 
 
+def test_prompt_does_not_cast_npc_as_teacher_and_asks_for_plain_text(session):
+    prompt = session.converse().system_prompt()
+    assert "Do not teach" in prompt
+    assert "plain text" in prompt and "no markdown" in prompt
+    for word in ("practice", "learning", "learner"):
+        assert word not in prompt
+
+
 def test_prompt_lists_expression_tags(session):
     prompt = session.converse(features=Features(expression=True)).system_prompt()
     for label in EXPRESSIONS:
