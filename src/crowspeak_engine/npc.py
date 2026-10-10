@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from .profile import LanguageProfile
 
-DEFAULT_PERSONA = "You are a friendly, conversational language-practice partner."
+DEFAULT_PERSONA = "You are a friendly, easygoing person having a casual conversation."
 
 
 @dataclass(frozen=True)

@@ -88,7 +88,7 @@ The natural defaults respect constraints. An NPC that only understands Japanese 
 
 `Npc` carries `id`, `name`, `persona` (free text), `language`, and the optional constraints. Specifying personas is meant to be a core capability of the engine, but the barrier to entry stays minimal: `session.converse()` with no NPC gives a generic partner (`Npc.default`) who natively speaks the learner's target language. Two lines gets you talking.
 
-The prompt is composed in `prompts.py`. **The persona says who the NPC is; the language profiles say how they speak.** A persona is the first line of the prompt, and the language rules follow it, so a persona can't remove the language-learning behavior.
+The prompt is composed in `prompts.py`. **The persona says who the NPC is; the language profiles say how they speak.** A persona is the first line of the prompt, and the language rules follow it, so a persona can't remove the language calibration. A conduct rule follows too: converse naturally, never teach or correct unless asked directly, and reply in plain text (no markdown). The NPC is never cast as a teacher, because feedback on the learner's language comes from analyzers (section 7), not from the character.
 
 Calibration (`proficiency_adapters.get_adapter`, unchanged) is applied depending on who is speaking what:
 - NPC speaking its own non-native target: calibrate to the **NPC's** level, so a beginner NPC talks like a beginner.
