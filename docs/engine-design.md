@@ -41,7 +41,10 @@ Use these terms consistently in code, docs and tasks.
 | **Speaker** | Only the generic "whoever is talking", as in `speaker_id` (an NPC id, or `"user"` for now; it will become the learner id, see the Macro task "Use learner id as speaker_id"). It never means the NPC or the NPC's LLM. |
 | **NPC reply** | The conversational LLM call that plays the NPC and streams its answer. Replaces the earlier "speaker" wording. |
 | **Analyzer** | A separate, structured-JSON LLM call that reviews the learner's input and runs beside the NPC reply (corrections now; vocab tracking and others later). It never speaks to the learner as a character. |
-| **Role** | `system` / `user` / `assistant` on `Message`: the OpenAI-protocol field, which keeps its wire names. `user` means the learner's messages there. |
+| **Role** | `system` / `user` / `assistant` on `Message`: the OpenAI-protocol field, which keeps its wire names. `user` means the learner's messages there. It never names an LLM assignment; that is a **Job**. |
+| **Provider** | A backend adapter: vendor or endpoint, credentials and client (`AzureOpenAIProvider`, `LocalOpenAIProvider`). Implements `LLMProvider`, and optionally `JSONProvider`. See section 8. |
+| **Job** | The named piece of work a provider is assigned: `npc`, an analyzer's or generator's name (`corrections`, later `vocab`, `daily_tasks`), or any string a consumer defines. A job resolves to a provider through the registry, falling back to the default. |
+| **Model** | The deployment or model name inside a provider (an Azure deployment, an Ollama tag). Not a registry layer: it is a provider constructor argument, so two models are two provider instances. |
 | **Session / Conversation** | World-level state for one learner, and one learner-NPC pairing with its history (see below). |
 
 ### Why Session is world-level and does not live inside Conversation
@@ -129,7 +132,7 @@ If a consumer stops consuming `send_text` mid-stream (task cancelled, client dis
 - **Level-aware.** Fewer, gentler flags at A1-A2, with a cap on items. Valid regional variants (for example Mexican *ustedes*, *carro*, *platicar*) must not be flagged. Spelling and punctuation apply to text only; pronunciation needs audio and is a separate future analyzer.
 - **History.** The result is stored on the learner's `Message.corrections` (`None` means not analyzed, an empty result means nothing found), in memory only. Prompt building ignores it, so the NPC never sees the grading. Database persistence comes later.
 - **Failure.** Bad JSON or a provider error becomes a non-fatal `AnalyzerError` and never affects the conversation.
-- **Providers.** The analyzer has its own `LLMProvider`, configurable independently of the NPC's (accuracy matters more than speed here), and needs a JSON-schema capability that the streaming protocol doesn't have yet.
+- **Providers.** Corrections is its own **Job** (`corrections`), so its provider is configurable independently of the NPC's (accuracy matters more than speed here). It needs the JSON-schema capability (`JSONProvider.complete_json`), which the registry checks per job (section 8).
 
 `AgentAudioChunk` from the architecture doc is deliberately not defined yet, since the doc doesn't specify its schema and we'd be inventing it. `GrammarFeedback` is superseded by `Corrections` above.
 
@@ -138,7 +141,34 @@ If a consumer stops consuming `send_text` mid-stream (task cancelled, client dis
 ## 8. Boundaries
 
 - **`LLMProvider`** (`llm/base.py`) is a small protocol: `stream(messages) -> AsyncIterator[str]`. The engine depends on that and nothing else. `AzureOpenAIProvider` is the first adapter and takes its configuration in its constructor. `from_env()` is a convenience that lives in the adapter, and callers are responsible for loading `.env`. Nothing is read at import time, so `import crowspeak_engine` never fails for lack of credentials (it used to raise `KeyError`). `LocalOpenAIProvider` (`llm/local.py`) targets any OpenAI-compatible local server such as Ollama. `provider_from_env()` (`llm/factory.py`) picks between them via `LLM_PROVIDER` (`azure`, the default, or `local`). Both adapters share one streaming loop in `llm/_openai_stream.py`.
-- **No terminal I/O, no environment reads in the engine.** `tests/test_boundary.py` enforces this. The only exception is the `llm/` adapters.
+- **No terminal I/O, no environment reads in the engine.** `tests/test_boundary.py` enforces this. The only exception is the `llm/` adapters and factory.
+
+### Providers, Jobs and Models
+
+Status: **design, not yet implemented** (Macro epic "Foundations: per-job LLM providers and installable engine package"). Today there are two implicit slots, `Engine(llm, analyzer_llm=None)`, and `provider_from_env()` reads a single `LLM_PROVIDER`.
+
+**Why.** Different LLM work wants different backends: a larger model for corrections, a cheap or local one for the NPC, and a consumer's own for jobs the engine doesn't know (for example generating a day's task scenarios). Each may point at a different endpoint or key per environment.
+
+**Terms.** A **Provider** is a backend adapter, a **Job** is the named work it is assigned, and a **Model** is the deployment inside a provider (glossary, section 3). One provider instance can fill several jobs, and one job can be re-pointed at another provider without touching the engine.
+
+**Jobs are plain strings, one per name.** `npc` for the NPC reply, an analyzer's `name` (`corrections`), a generator's name. There is no fixed category enum, so a consumer adds a job by using a new name. The built-in constants are `npc` and `corrections`.
+
+**Registry.** `Providers(default, jobs={})` (planned in `llm/providers.py`) is the single place that answers "which provider runs this job":
+
+- `for_job(name, needs="stream" | "json")` returns `jobs[name]` if set, else `default`. If the result lacks the needed capability it raises one clear error naming the job and the capability. This replaces the ad hoc `hasattr(..., "complete_json")` check in `Conversation._corrections_analyzer()`.
+- Resolution is most specific first (job, then default), the same layering as `InteractionPrefs` and `Features`.
+- `Engine(llm, analyzer_llm=x)` stays as sugar for `Providers(default=llm, jobs={"corrections": x})`.
+
+**Configuration is code-first.** A consumer builds adapters (each already takes its config in its constructor) and passes a `Providers`. This suits a wrapper app that pulls secrets from its own store. `providers_from_env()` in `llm/factory.py` is a convenience on top for the CLI and tests, and it is the only place besides the adapters that reads the environment:
+
+- `LLM_PROVIDER` selects the default provider, as today. `provider_from_env()` remains as the single-provider shorthand.
+- Per-job overrides are `LLM_<JOB>_PROVIDER` and `LLM_<JOB>_MODEL`, with the job name upper-cased and `-` replaced by `_` (for example `LLM_CORRECTIONS_PROVIDER=azure`, `LLM_CORRECTIONS_MODEL=...`). A model override replaces the provider's own model variable (`AZURE_OPENAI_DEPLOYMENT`, `LOCAL_LLM_MODEL`) for that job only.
+- Endpoint and key stay provider-level (`AZURE_OPENAI_*`, `LOCAL_LLM_*`) and are shared by every job on that provider. A job that needs a different account or endpoint is configured in code, not env, until a real need says otherwise.
+- This makes the useful mixed setup expressible from env: a local NPC (`LLM_PROVIDER=local`) with corrections on Azure (`LLM_CORRECTIONS_PROVIDER=azure`). It stays subject to the testing policy: live Azure calls need explicit confirmation.
+
+**Voice and translation (names reserved, nothing built).** `stt` and `tts` are jobs, but they are filled by their own protocols (`SpeechToText`, `TextToSpeech`), not `LLMProvider`. Those protocols are defined when the voice work starts, and enabling the voice feature without a provider for them fails fast (section 7). `translation` is an ordinary LLM job unless a non-LLM backend (a translation API) appears, in which case it gets its own protocol the same way.
+
+**Non-conversation jobs.** Analyzers are turn-shaped (`AnalyzerContext`). Work that has no conversation, such as daily task scenarios, is a *generator* with its own job name that runs through the same registry. Its protocol is a separate task in the epic. Scheduling, caching and persistence of generated content belong to the wrapper app, not core.
 - **The CLI is separate** (`crowspeak_cli`): the prompts, printing, UTF-8 stdout fix for Windows, and `--persona` flag all live there. It is deliberately minimal, because it is a reference client.
 
 ## 9. Package layout
@@ -154,6 +184,7 @@ src/crowspeak_engine/
   prompts.py      system-prompt composition
   events.py       domain events
   llm/            LLMProvider protocol, Azure + local adapters, env factory
+                  (planned: providers.py, the Providers/Job registry)
   proficiency*.py CEFR levels and per-language adapters (moved unchanged)
 src/crowspeak_cli/  reference terminal client
 tests/
@@ -171,6 +202,10 @@ Package naming: import `crowspeak_engine`, PyPI `crowspeak-engine`, CLI `crowspe
 | Keep a `chat.py` shim | The CLI should be minimal enough that a shim is redundant. |
 | Build Group / multi-NPC routing now | Session already sits above conversations, so nothing needs to change when they arrive. |
 | Define all events in the architecture doc | Their schemas aren't specified yet. |
+| Call the assignments "roles" | `Role` already means `system`/`user`/`assistant` on `Message`. We use **Job**. |
+| Call them "slots", "tasks" or "domains" | "Slot" doesn't convey what the LLM is doing. "Task" collides with the R3F daily tasks. "Domain" is overloaded (domain model) and names the subject area, not the function. |
+| A fixed set of job categories (`npc`, `analysis`, `generation`) | One shared `analysis` job would stop a corrections analyzer using a bigger model than a later vocab analyzer. Jobs are plain strings, one per analyzer or generator name. |
+| Env vars as the primary configuration surface | Awkward for a wrapper that pulls secrets from its own store. Configuration is code-first, and env is a helper in the factory. |
 
 ## 11. Known gaps and next steps
 
@@ -182,3 +217,5 @@ These are intentionally open and are the first things to discuss after this foun
 - **History growth.** History is replayed in full each turn, with no truncation or token budgeting.
 - **Persistence.** Sessions and conversations are in-memory only.
 - **Gateway and protocol.** A wire format for events (WebSocket) and a place for `SessionStarted` to be sent.
+- **Multi-provider job routing.** Designed (section 8, "Providers, Jobs and Models") but not implemented: a `Providers` registry, per-job env configuration, and a CLI that shows the provider and model per job.
+- **Non-conversation structured jobs (generators).** A protocol and `engine.generate()` for work with no conversation, such as generating a day's task scenarios scaled to the learner's proficiency. Tracked in the same epic.
