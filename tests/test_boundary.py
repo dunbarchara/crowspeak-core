@@ -13,8 +13,8 @@ def test_no_terminal_io_in_engine():
         assert not re.search(r"\b(print|input)\(", path.read_text(encoding="utf-8")), path
 
 
-def test_no_env_reads_outside_provider_adapters():
+def test_no_env_reads_outside_the_llm_factory():
     for path in ROOT.rglob("*.py"):
-        if path.parent.name == "llm":
+        if path.parent.name == "llm" and path.name == "factory.py":
             continue
         assert "os.environ" not in path.read_text(encoding="utf-8"), path

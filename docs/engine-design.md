@@ -140,12 +140,13 @@ If a consumer stops consuming `send_text` mid-stream (task cancelled, client dis
 
 ## 8. Boundaries
 
-- **`LLMProvider`** (`llm/base.py`) is a small protocol: `stream(messages) -> AsyncIterator[str]`. The engine depends on that and nothing else. `AzureOpenAIProvider` is the first adapter and takes its configuration in its constructor. `from_env()` is a convenience that lives in the adapter, and callers are responsible for loading `.env`. Nothing is read at import time, so `import crowspeak_engine` never fails for lack of credentials (it used to raise `KeyError`). `LocalOpenAIProvider` (`llm/local.py`) targets any OpenAI-compatible local server such as Ollama. `provider_from_env()` (`llm/factory.py`) picks between them via `LLM_PROVIDER` (`azure`, the default, or `local`). Both adapters share one streaming loop in `llm/_openai_stream.py`.
-- **No terminal I/O, no environment reads in the engine.** `tests/test_boundary.py` enforces this. The only exception is the `llm/` adapters and factory.
+- **`LLMProvider`** (`llm/base.py`) is a small protocol: `stream(messages) -> AsyncIterator[str]`. The engine depends on that and nothing else. `AzureOpenAIProvider` is the first adapter and takes its configuration in its constructor; the adapters read no environment variables themselves. `LocalOpenAIProvider` (`llm/local.py`) targets any OpenAI-compatible local server such as Ollama. `llm/factory.py` builds either from a `ProviderConfig`, or from `LLM_*` environment variables as a convenience (callers are responsible for loading `.env`). Nothing is read at import time, so `import crowspeak_engine` never fails for lack of credentials. Both adapters share one streaming loop in `llm/_openai_stream.py`.
+- **No terminal I/O, no environment reads in the engine.** `tests/test_boundary.py` enforces this. The only exception is `llm/factory.py`.
+- **The CLI is separate** (`crowspeak_cli`): the prompts, printing, UTF-8 stdout fix for Windows, and `--persona` flag all live there. It is deliberately minimal, because it is a reference client.
 
 ### Providers, Jobs and Models
 
-Status: **the registry is implemented**; the env factory, CLI support and generators are still planned (Macro epic "Foundations: per-job LLM providers and installable engine package"). `provider_from_env()` still reads a single `LLM_PROVIDER` and builds one provider.
+Status: **the registry and the config layer (including the env mapper) are implemented**; CLI support for per-job providers and generators are still planned (Macro epic "Foundations: per-job LLM providers and installable engine package"). The CLI still builds one provider with `provider_from_env()`.
 
 **Why.** Different LLM work wants different backends: a larger model for corrections, a cheap or local one for the NPC, and a consumer's own for jobs the engine doesn't know (for example generating a day's task scenarios). Each may point at a different endpoint or key per environment.
 
@@ -162,17 +163,21 @@ Status: **the registry is implemented**; the env factory, CLI support and genera
 - The NPC provider is resolved when a conversation is created (`converse()`), so a provider that can't stream fails there rather than mid-turn. Analyzer providers are resolved per turn, because `Features` can change between turns.
 - An analyzer's `name` is its job name (`CorrectionsAnalyzer.name == JOB_CORRECTIONS`).
 
-**Configuration is code-first.** A consumer builds adapters (each already takes its config in its constructor) and passes a `Providers`. This suits a wrapper app that pulls secrets from its own store. `providers_from_env()` in `llm/factory.py` is a convenience on top for the CLI and tests, and it is the only place besides the adapters that reads the environment:
+**Configuration is explicit first; env is a convenience.** A wrapper app owns where its config comes from (settings, a secrets store) and passes values in, so there are three levels, all ending in the same `Providers`:
 
-- `LLM_PROVIDER` selects the default provider, as today. `provider_from_env()` remains as the single-provider shorthand.
-- Per-job overrides are `LLM_<JOB>_PROVIDER` and `LLM_<JOB>_MODEL`, with the job name upper-cased and `-` replaced by `_` (for example `LLM_CORRECTIONS_PROVIDER=azure`, `LLM_CORRECTIONS_MODEL=...`). A model override replaces the provider's own model variable (`AZURE_OPENAI_DEPLOYMENT`, `LOCAL_LLM_MODEL`) for that job only.
-- Endpoint and key stay provider-level (`AZURE_OPENAI_*`, `LOCAL_LLM_*`) and are shared by every job on that provider. A job that needs a different account or endpoint is configured in code, not env, until a real need says otherwise.
-- This makes the useful mixed setup expressible from env: a local NPC (`LLM_PROVIDER=local`) with corrections on Azure (`LLM_CORRECTIONS_PROVIDER=azure`). It stays subject to the testing policy: live Azure calls need explicit confirmation.
+1. **Adapters.** Construct `AzureOpenAIProvider(...)` / `LocalOpenAIProvider(...)` directly and pass `Providers(default=..., jobs=...)`. Nothing else is needed.
+2. **Declarative config.** `ProviderConfig(kind, model, endpoint, api_key, api_version)` describes one provider; `build_provider(config)` builds it and `providers_from_config(default, jobs)` builds a registry. This reads no environment, supports a different endpoint or key per job, and keeps `api_key` out of `repr`.
+3. **Environment mapper** (`llm/factory.py`, the only code in the engine that reads env), for the CLI, tests and local development:
+   - `LLM_PROVIDER` selects the default provider (`azure` if unset). `provider_from_env()` is the single-provider shorthand.
+   - `providers_from_env(jobs=("npc", "corrections"))` reads `LLM_<JOB>_PROVIDER` and `LLM_<JOB>_MODEL` for each job it is given (job upper-cased, non-alphanumerics replaced by `_`, for example `LLM_CORRECTIONS_PROVIDER=azure`). A provider-only override builds that kind with its own model variable; a model-only override builds the default's kind with that model. A job with neither falls back to the default.
+   - Jobs are named by the caller, not discovered, so a consumer-defined job is passed in `jobs=`.
+   - Endpoint and key stay provider-level (`AZURE_OPENAI_*`, `LOCAL_LLM_*`) and shared by every job on that provider. A job that needs its own account uses level 2.
+   - Blank values count as unset. An unknown provider kind, or a missing Azure variable, raises `ValueError` naming the variable.
+   - This makes the useful mixed setup expressible from env: a local NPC (`LLM_PROVIDER=local`) with corrections on Azure (`LLM_CORRECTIONS_PROVIDER=azure`). It stays subject to the testing policy: live Azure calls need explicit confirmation.
 
 **Voice and translation (names reserved, nothing built).** `stt` and `tts` are jobs, but they are filled by their own protocols (`SpeechToText`, `TextToSpeech`), not `LLMProvider`. Those protocols are defined when the voice work starts, and enabling the voice feature without a provider for them fails fast (section 7). `translation` is an ordinary LLM job unless a non-LLM backend (a translation API) appears, in which case it gets its own protocol the same way.
 
 **Non-conversation jobs.** Analyzers are turn-shaped (`AnalyzerContext`). Work that has no conversation, such as daily task scenarios, is a *generator* with its own job name that runs through the same registry. Its protocol is a separate task in the epic. Scheduling, caching and persistence of generated content belong to the wrapper app, not core.
-- **The CLI is separate** (`crowspeak_cli`): the prompts, printing, UTF-8 stdout fix for Windows, and `--persona` flag all live there. It is deliberately minimal, because it is a reference client.
 
 ## 9. Package layout
 
@@ -208,7 +213,7 @@ Package naming: import `crowspeak_engine`, PyPI `crowspeak-engine`, CLI `crowspe
 | Call the assignments "roles" | `Role` already means `system`/`user`/`assistant` on `Message`. We use **Job**. |
 | Call them "slots", "tasks" or "domains" | "Slot" doesn't convey what the LLM is doing. "Task" collides with the R3F daily tasks. "Domain" is overloaded (domain model) and names the subject area, not the function. |
 | A fixed set of job categories (`npc`, `analysis`, `generation`) | One shared `analysis` job would stop a corrections analyzer using a bigger model than a later vocab analyzer. Jobs are plain strings, one per analyzer or generator name. |
-| Env vars as the primary configuration surface | Awkward for a wrapper that pulls secrets from its own store. Configuration is code-first, and env is a helper in the factory. |
+| Env vars as the primary configuration surface | A library shouldn't make its behaviour depend on ambient process state, and a wrapper pulls secrets from its own store. Configuration is explicit (adapters, `ProviderConfig`), and env is a mapper onto it in the factory. |
 
 ## 11. Known gaps and next steps
 
@@ -220,5 +225,5 @@ These are intentionally open and are the first things to discuss after this foun
 - **History growth.** History is replayed in full each turn, with no truncation or token budgeting.
 - **Persistence.** Sessions and conversations are in-memory only.
 - **Gateway and protocol.** A wire format for events (WebSocket) and a place for `SessionStarted` to be sent.
-- **Multi-provider job routing.** The `Providers` registry is implemented (section 8, "Providers, Jobs and Models"). Still open: per-job env configuration in the factory, and a CLI that shows the provider and model per job.
+- **Multi-provider job routing.** The `Providers` registry and per-job configuration (`ProviderConfig`, `providers_from_env`) are implemented (section 8, "Providers, Jobs and Models"). Still open: a CLI that builds and shows the provider and model per job.
 - **Non-conversation structured jobs (generators).** A protocol and `engine.generate()` for work with no conversation, such as generating a day's task scenarios scaled to the learner's proficiency. Tracked in the same epic.
