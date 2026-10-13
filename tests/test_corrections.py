@@ -97,6 +97,95 @@ def test_parse_caps_items_by_level_and_drops_noop_suggestions():
 
     assert len(result.items) == MAX_ITEMS[Proficiency.A1] == 2
     assert all(i.original != "w0" for i in result.items)
+    # Over the cap is folded, not dropped: 8 items, one a no-op, leaves 7 = 2 shown + 5 more.
+    assert [i.original for i in result.items] == ["w1", "w2"]
+    assert [i.original for i in result.more] == ["w3", "w4", "w5", "w6", "w7"]
+
+
+def _raw_items(*specs, corrected="c"):
+    """JSON analysis from (original, suggestion, category[, severity]) tuples."""
+    items = [
+        {
+            "original": s[0],
+            "suggestion": s[1],
+            "category": s[2],
+            "severity": s[3] if len(s) > 3 else "error",
+            "explanation": "x",
+            "confidence": None,
+        }
+        for s in specs
+    ]
+    return json.dumps({"corrected": corrected, "praise": None, "items": items})
+
+
+A1_MESSAGE = "Hola como estas! Me lamo Charlie. Yo eres un programador."
+A1_ANALYSIS = _raw_items(
+    ("como estas", "cómo estás", "accents"),
+    ("Hola", "¡Hola", "punctuation"),
+    ("Me lamo", "Me llamo", "spelling"),
+    ("Yo eres", "Yo soy", "grammar"),
+    corrected="¡Hola, cómo estás! Me llamo Charlie. Yo soy un programador.",
+)
+
+
+def test_a1_folds_accents_and_punctuation_behind_the_main_points():
+    result = parse_corrections(A1_ANALYSIS, ctx(A1_MESSAGE, level=Proficiency.A1))
+
+    assert [i.original for i in result.items] == ["Yo eres", "Me lamo"]  # grammar, spelling
+    assert {i.original for i in result.more} == {"como estas", "Hola"}
+    assert {i.category for i in result.more} == {"accents", "punctuation"}
+    assert not result.is_correct
+    # The corrected text is always complete, so every edit in it has an item somewhere.
+    assert result.corrected == "¡Hola, cómo estás! Me llamo Charlie. Yo soy un programador."
+
+
+def test_b1_does_not_fold_by_category_but_still_ranks_and_caps():
+    result = parse_corrections(A1_ANALYSIS, ctx(A1_MESSAGE, level=Proficiency.B1))
+
+    assert MAX_ITEMS[Proficiency.B1] == 3
+    # Substantive points outrank minor ones when the cap bites; minor ones can be shown.
+    assert [i.original for i in result.items] == ["Yo eres", "Me lamo", "Hola"]
+    assert [i.original for i in result.more] == ["como estas"]
+
+
+def test_only_minor_fixes_is_not_reported_as_correct():
+    raw = _raw_items(("como", "cómo", "accents"), corrected="¿Cómo estás?")
+
+    result = parse_corrections(raw, ctx("como estas", level=Proficiency.A1))
+
+    assert result.items == ()
+    assert [i.original for i in result.more] == ["como"]
+    assert not result.is_correct
+    assert result.corrected == "¿Cómo estás?"
+
+
+def test_folded_items_are_located_without_overlapping_shown_ones():
+    raw = _raw_items(("casa", "la casa", "grammar"), ("casa", "cása", "accents"))
+
+    result = parse_corrections(raw, ctx("casa casa", level=Proficiency.A1))
+
+    assert result.items[0].span == (0, 4)
+    assert result.more[0].span == (5, 9)  # the second occurrence, not the same one
+
+
+def test_corrections_round_trip_includes_more_and_old_payloads_still_load():
+    result = parse_corrections(A1_ANALYSIS, ctx(A1_MESSAGE, level=Proficiency.A1))
+    data = json.loads(json.dumps(result.to_dict()))
+
+    assert Corrections.from_dict(data) == result
+    del data["more"]  # a payload from before `more` existed
+    assert Corrections.from_dict(data).more == ()
+
+
+def test_schema_offers_accents_and_prompt_asks_for_every_mistake():
+    from crowspeak_engine.analyzers.corrections import SCHEMA
+
+    category = SCHEMA["properties"]["items"]["items"]["properties"]["category"]
+    assert "accents" in category["enum"]
+
+    system = build_prompt(ctx(level=Proficiency.A1))[0]["content"]
+    assert "every mistake" in system and "accents" in system
+    assert "at most" not in system  # the cap is the engine's job, not the model's
 
 
 def test_parse_no_items_means_correct_and_blank_praise_is_none():

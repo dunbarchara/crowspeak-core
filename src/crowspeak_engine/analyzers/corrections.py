@@ -11,7 +11,8 @@ from ..llm.providers import JOB_CORRECTIONS
 from ..proficiency import Proficiency
 from .base import AnalysisError, AnalyzerContext
 
-# Most items shown per message, by level: beginners get only the main points.
+# Most items shown up front per message, by level: beginners get only the main points.
+# The rest are not dropped; they go to `Corrections.more`.
 MAX_ITEMS = {
     Proficiency.A1: 2,
     Proficiency.A2: 2,
@@ -21,9 +22,17 @@ MAX_ITEMS = {
     Proficiency.C2: 5,
 }
 
+# Categories folded into `Corrections.more` whatever the cap, by level. The model reports
+# every mistake; the engine decides what a beginner sees first. Levels not listed fold nothing.
+FOLDED_CATEGORIES: dict[Proficiency, frozenset[str]] = {
+    Proficiency.A1: frozenset({"accents", "punctuation"}),
+    Proficiency.A2: frozenset({"accents", "punctuation"}),
+}
+
+# Tone only: what to show is the engine's decision (above), not the model's.
 _LEVEL_HINT = {
-    Proficiency.A1: "Be very gentle: flag only errors that block understanding.",
-    Proficiency.A2: "Be gentle: skip naturalness suggestions and minor slips.",
+    Proficiency.A1: "Keep every explanation to one short, simple sentence.",
+    Proficiency.A2: "Keep explanations short and simple.",
 }
 
 SCHEMA = {
@@ -62,21 +71,22 @@ SCHEMA = {
 
 def build_prompt(ctx: AnalyzerContext) -> list[dict]:
     level = ctx.proficiency
-    limits = f"Only flag what a {level.value} learner should reasonably get right, and report "
-    limits += (
-        f"at most {MAX_ITEMS[level]} items, most important first. {_LEVEL_HINT.get(level, '')}"
-    )
     system = "\n".join(
         [
             f"You are a language teacher reviewing ONE message written by a learner of "
             f"{ctx.target_language} (CEFR level {level.value}, native language "
             f"{ctx.native_language}). You are not role-playing and not replying to it.",
-            "List the mistakes in the learner's message. For each, `original` must be the exact "
-            "substring as written, `suggestion` its replacement, `category` one of "
-            f"{', '.join(CATEGORIES)}, and `severity` `error` (wrong) or `suggestion` "
-            "(correct but unnatural). `corrected` is the whole message with your fixes applied.",
-            f"Write every `explanation` in {ctx.native_language}, briefly, naming the rule.",
-            limits.strip(),
+            "List every mistake in the learner's message, including missing accents and "
+            "punctuation. Do not limit the number of items: the app decides what to show. For "
+            "each, `original` must be the exact substring as written, `suggestion` its "
+            f"replacement, `category` one of {', '.join(CATEGORIES)}, and `severity` `error` "
+            "(wrong) or `suggestion` (correct but unnatural). `corrected` is the whole message "
+            "with all of your fixes applied.",
+            "`accents` is a missing or wrong diacritic mark on otherwise correct letters (for "
+            "example `como` for `cómo`). A different letter (`n` for `ñ`) or a misspelled word "
+            "is `spelling`, and missing or wrong marks such as `¡` `¿` `,` `.` are `punctuation`.",
+            f"Write every `explanation` in {ctx.native_language}, briefly, naming the rule. "
+            f"{_LEVEL_HINT.get(level, '')}".strip(),
             f"Regional variants of {ctx.target_language} are correct: do not flag vocabulary or "
             "forms that are normal in that region. If unsure whether something is wrong, do not "
             "flag it.",
@@ -134,11 +144,18 @@ def parse_corrections(raw: str, ctx: AnalyzerContext) -> Corrections:
     except (ValueError, KeyError, TypeError) as e:  # JSONDecodeError is a ValueError
         raise AnalysisError(f"unusable corrections output: {e}") from e
 
-    items.sort(key=lambda i: i.severity != "error")  # stable: errors first
-    items = items[: MAX_ITEMS[ctx.proficiency]]
-    taken: list[tuple[int, int]] = []
+    # Errors first, then by category in CATEGORIES order (grammar before accents), so the
+    # cap keeps the points that matter; the sort is stable within each group.
+    items.sort(key=lambda i: (i.severity != "error", CATEGORIES.index(i.category)))
+    folded = FOLDED_CATEGORIES.get(ctx.proficiency, frozenset())
+    major = [i for i in items if i.category not in folded]
+    minor = [i for i in items if i.category in folded]
+    cap = MAX_ITEMS[ctx.proficiency]
+    shown, rest = major[:cap], major[cap:] + minor  # nothing is dropped
+
+    taken: list[tuple[int, int]] = []  # shared, so no two items claim the same text
     located: list[CorrectionItem] = []
-    for item in items:
+    for item in shown + rest:
         span = _locate(ctx.text, item.original, taken)
         if span is not None:
             taken.append(span)
@@ -148,8 +165,9 @@ def parse_corrections(raw: str, ctx: AnalyzerContext) -> Corrections:
         original=ctx.text,
         corrected=corrected if located else ctx.text,
         is_correct=not located,
-        items=tuple(located),
+        items=tuple(located[: len(shown)]),
         praise=praise if isinstance(praise, str) and praise.strip() else None,
+        more=tuple(located[len(shown) :]),
     )
 
 

@@ -124,3 +124,86 @@ def test_review_reports_unanalyzed_and_empty_history():
     assert _review([], "", color=False) == "Nothing to review yet."
     history = [Message(role="user", content="hola")]
     assert "not analyzed" in _review(history, "", color=False)
+
+
+# --- folded items (`more`) -----------------------------------------------------------
+
+
+def _with_more(items=(), more=(), **kwargs):
+    from dataclasses import replace
+
+    return replace(_corrections(items, **kwargs), more=tuple(more))
+
+
+def _minor(original, suggestion, category="accents"):
+    start = TEXT.index(original)
+    return CorrectionItem(
+        original=original,
+        suggestion=suggestion,
+        category=category,
+        severity="error",
+        explanation="marks matter",
+        explanation_language="en",
+        span=(start, start + len(original)),
+    )
+
+
+def test_summary_counts_folded_items_and_names_their_categories():
+    c = _with_more(
+        [_item("unos manzana", "unas manzanas")],
+        [_minor("compré", "compre"), _minor("Ayer", "Ayer,", "punctuation")],
+    )
+
+    assert render.format_summary(c, 2) == (
+        "  ✎ 1 error, +2 more (accents, punctuation) · /review 2"
+    )
+
+
+def test_summary_with_only_folded_items_points_at_review_more():
+    c = _with_more(more=[_minor("compré", "compre")])
+
+    assert render.format_summary(c, 1) == "  ✎ 1 more (accents) · /review-more 1"
+    assert render.format_summary(c) == "  ✎ 1 more (accents) · /review-more"
+
+
+def test_only_folded_items_is_not_reported_as_looking_good():
+    c = _with_more(more=[_minor("compré", "compre")], corrected="Ayer yo fui al mercado.")
+
+    assert "looks good" not in render.format_summary(c, 1)
+    assert "Looks good" not in render.format_corrections(c)
+
+
+def test_format_corrections_leaves_folded_items_out_and_more_hint_points_to_them():
+    c = _with_more([_item("unos manzana", "unas manzanas")], [_minor("compré", "compre")])
+
+    out = render.format_corrections(c)
+
+    assert '"compré"' not in out
+    assert render.format_more_hint(c, 3) == "  +1 more (accents) · /review-more 3"
+    assert render.format_more_hint(_corrections([_item("yo fui", "fui")]), 1) == ""
+
+
+def test_format_more_lists_folded_notes_with_marked_spans_and_corrected_text():
+    c = _with_more(
+        [_item("unos manzana", "unas manzanas")],
+        [_minor("compré", "compre")],
+        corrected="Ayer yo fui al mercado y compre unas manzanas.",
+    )
+
+    out = render.format_more(c)
+
+    assert "[compré]" in out and "[unos manzana]" not in out
+    assert '"compré" → "compre"' in out
+    assert "accents · error" in out
+    assert "→ Ayer yo fui al mercado y compre unas manzanas." in out
+    assert render.format_more(_corrections()) == "  Nothing more to show."
+
+
+def test_review_more_selects_the_folded_list_and_review_adds_the_hint():
+    c = _with_more([_item("unos manzana", "unas manzanas")], [_minor("compré", "compre")])
+    history = [Message(role="user", content=TEXT, corrections=c)]
+
+    assert '"compré"' in _review(history, "", color=False, more=True)
+    reviewed = _review(history, "", color=False)
+    assert reviewed.endswith("+1 more (accents) · /review-more 1")
+    assert _review(history, "x", color=False, more=True) == "Usage: /review-more [N]"

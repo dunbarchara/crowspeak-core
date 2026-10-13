@@ -127,8 +127,9 @@ def _use_color(stream) -> bool:
     return stream.isatty() and not os.environ.get("NO_COLOR")
 
 
-def _review(history: list[Message], arg: str, color: bool) -> str:
-    """Corrections for the learner's last message, or the Nth (1-based) with `/review N`."""
+def _review(history: list[Message], arg: str, color: bool, more: bool = False) -> str:
+    """Corrections for the learner's last message, or the Nth (1-based) with `/review N`.
+    With `more`, the folded ones (`/review-more`): minor fixes and anything over the cap."""
     learner_messages = [m for m in history if m.role == "user"]
     if not learner_messages:
         return "Nothing to review yet."
@@ -136,7 +137,7 @@ def _review(history: list[Message], arg: str, color: bool) -> str:
         try:
             index = int(arg)
         except ValueError:
-            return "Usage: /review [N]"
+            return f"Usage: {'/review-more' if more else '/review'} [N]"
         if not 1 <= index <= len(learner_messages):
             return f"No message {index}; you have written {len(learner_messages)}."
     else:
@@ -147,7 +148,11 @@ def _review(history: list[Message], arg: str, color: bool) -> str:
             f"Message {index} was not analyzed "
             "(corrections need --corrections and a message in your target language)."
         )
-    return render.format_corrections(message.corrections, color)
+    if more:
+        return render.format_more(message.corrections, color)
+    out = render.format_corrections(message.corrections, color)
+    hint = render.format_more_hint(message.corrections, index, color)
+    return f"{out}\n{hint}" if hint else out
 
 
 async def _chat(
@@ -173,7 +178,8 @@ async def _chat(
                 "none will appear with these settings."
             )
         print("Corrections are on: a one-line summary follows each reply.")
-        print("Type /review [N] for the details of your last (or Nth) message.")
+        print("Type /review [N] for the details of your last (or Nth) message,")
+        print("and /review-more [N] for the minor fixes (accents, punctuation) folded out of it.")
     print()
 
     while True:
@@ -188,8 +194,9 @@ async def _chat(
         if user_input.lower() in ("exit", "quit"):
             return
         command, _, arg = user_input.partition(" ")
-        if command.lower() == "/review":
-            print(_review(conversation.history, arg.strip(), color), "\n")
+        if command.lower() in ("/review", "/review-more"):
+            more = command.lower() == "/review-more"
+            print(_review(conversation.history, arg.strip(), color, more), "\n")
             continue
 
         line_open = False  # True while the NPC's reply is mid-line
