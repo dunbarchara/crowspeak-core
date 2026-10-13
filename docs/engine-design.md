@@ -145,7 +145,7 @@ If a consumer stops consuming `send_text` mid-stream (task cancelled, client dis
 
 ### Providers, Jobs and Models
 
-Status: **design, not yet implemented** (Macro epic "Foundations: per-job LLM providers and installable engine package"). Today there are two implicit slots, `Engine(llm, analyzer_llm=None)`, and `provider_from_env()` reads a single `LLM_PROVIDER`.
+Status: **the registry is implemented**; the env factory, CLI support and generators are still planned (Macro epic "Foundations: per-job LLM providers and installable engine package"). `provider_from_env()` still reads a single `LLM_PROVIDER` and builds one provider.
 
 **Why.** Different LLM work wants different backends: a larger model for corrections, a cheap or local one for the NPC, and a consumer's own for jobs the engine doesn't know (for example generating a day's task scenarios). Each may point at a different endpoint or key per environment.
 
@@ -153,11 +153,14 @@ Status: **design, not yet implemented** (Macro epic "Foundations: per-job LLM pr
 
 **Jobs are plain strings, one per name.** `npc` for the NPC reply, an analyzer's `name` (`corrections`), a generator's name. There is no fixed category enum, so a consumer adds a job by using a new name. The built-in constants are `npc` and `corrections`.
 
-**Registry.** `Providers(default, jobs={})` (planned in `llm/providers.py`) is the single place that answers "which provider runs this job":
+**Registry.** `Providers(default, jobs={})` (`llm/providers.py`) is the single place that answers "which provider runs this job":
 
-- `for_job(name, needs="stream" | "json")` returns `jobs[name]` if set, else `default`. If the result lacks the needed capability it raises one clear error naming the job and the capability. This replaces the ad hoc `hasattr(..., "complete_json")` check in `Conversation._corrections_analyzer()`.
+- `for_job(name, needs="stream" | "json")` returns `jobs[name]` if set, else `default`. If the result lacks the needed capability (`stream()` or `complete_json()`) it raises `ProviderError`, a `ValueError`, naming the job, the capability and the provider. This replaced the ad hoc `hasattr(..., "complete_json")` check in `Conversation._corrections_analyzer()`.
+- `jobs` is copied and read-only, so changing the caller's dict afterwards doesn't change the registry.
 - Resolution is most specific first (job, then default), the same layering as `InteractionPrefs` and `Features`.
-- `Engine(llm, analyzer_llm=x)` stays as sugar for `Providers(default=llm, jobs={"corrections": x})`.
+- `Engine(providers=...)` is the full form. `Engine(llm, analyzer_llm=x)` stays as sugar for `Providers(default=llm, jobs={"corrections": x})`; giving both forms, or neither, is a `ValueError`.
+- The NPC provider is resolved when a conversation is created (`converse()`), so a provider that can't stream fails there rather than mid-turn. Analyzer providers are resolved per turn, because `Features` can change between turns.
+- An analyzer's `name` is its job name (`CorrectionsAnalyzer.name == JOB_CORRECTIONS`).
 
 **Configuration is code-first.** A consumer builds adapters (each already takes its config in its constructor) and passes a `Providers`. This suits a wrapper app that pulls secrets from its own store. `providers_from_env()` in `llm/factory.py` is a convenience on top for the CLI and tests, and it is the only place besides the adapters that reads the environment:
 
@@ -175,7 +178,7 @@ Status: **design, not yet implemented** (Macro epic "Foundations: per-job LLM pr
 
 ```
 src/crowspeak_engine/
-  engine.py       Engine(llm).start_session(learner, prefs=None)
+  engine.py       Engine(llm | providers=).start_session(learner, prefs=None)
   session.py      Session, Learner
   conversation.py Conversation: history, turn loop, rollback
   npc.py          Npc, Npc.default
@@ -184,7 +187,7 @@ src/crowspeak_engine/
   prompts.py      system-prompt composition
   events.py       domain events
   llm/            LLMProvider protocol, Azure + local adapters, env factory
-                  (planned: providers.py, the Providers/Job registry)
+                  providers.py: Providers, the Job registry
   proficiency*.py CEFR levels and per-language adapters (moved unchanged)
 src/crowspeak_cli/  reference terminal client
 tests/
@@ -217,5 +220,5 @@ These are intentionally open and are the first things to discuss after this foun
 - **History growth.** History is replayed in full each turn, with no truncation or token budgeting.
 - **Persistence.** Sessions and conversations are in-memory only.
 - **Gateway and protocol.** A wire format for events (WebSocket) and a place for `SessionStarted` to be sent.
-- **Multi-provider job routing.** Designed (section 8, "Providers, Jobs and Models") but not implemented: a `Providers` registry, per-job env configuration, and a CLI that shows the provider and model per job.
+- **Multi-provider job routing.** The `Providers` registry is implemented (section 8, "Providers, Jobs and Models"). Still open: per-job env configuration in the factory, and a CLI that shows the provider and model per job.
 - **Non-conversation structured jobs (generators).** A protocol and `engine.generate()` for work with no conversation, such as generating a day's task scenarios scaled to the learner's proficiency. Tracked in the same epic.

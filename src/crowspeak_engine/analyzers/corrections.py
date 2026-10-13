@@ -7,6 +7,7 @@ from dataclasses import replace
 
 from ..corrections import CATEGORIES, SEVERITIES, CorrectionItem, Corrections
 from ..llm.base import JSONProvider
+from ..llm.providers import JOB_CORRECTIONS
 from ..proficiency import Proficiency
 from .base import AnalysisError, AnalyzerContext
 
@@ -153,7 +154,7 @@ def parse_corrections(raw: str, ctx: AnalyzerContext) -> Corrections:
 
 
 class CorrectionsAnalyzer:
-    name = "corrections"
+    name = JOB_CORRECTIONS  # an analyzer's name is also the job its provider is assigned to
 
     def __init__(self, llm: JSONProvider) -> None:
         self._llm = llm

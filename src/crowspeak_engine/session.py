@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from .conversation import Conversation
 from .events import SessionStarted
 from .features import Features
-from .llm.base import LLMProvider
+from .llm.providers import Providers
 from .npc import Npc
 from .prefs import InteractionPrefs, resolve_prefs
 from .profile import LanguageProfile
@@ -28,15 +28,13 @@ class Session:
     def __init__(
         self,
         learner: Learner,
-        llm: LLMProvider,
+        providers: Providers,
         prefs: InteractionPrefs | None = None,
         features: Features | None = None,
-        analyzer_llm: LLMProvider | None = None,
     ) -> None:
         self.session_id = str(uuid.uuid4())
         self.learner = learner
-        self._llm = llm
-        self._analyzer_llm = analyzer_llm
+        self._providers = providers
         self._prefs = prefs
         self._features = features
         self.conversations: dict[str, Conversation] = {}
@@ -77,6 +75,6 @@ class Session:
         existing = self.conversations.get(npc.id)
         if existing is not None:
             return existing
-        conv = Conversation(self, npc, self._llm, prefs, features, self._analyzer_llm)
+        conv = Conversation(self, npc, self._providers, prefs, features)
         self.conversations[npc.id] = conv
         return conv

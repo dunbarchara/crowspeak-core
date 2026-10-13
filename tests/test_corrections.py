@@ -12,6 +12,7 @@ from crowspeak_engine import (
     EngineError,
     Features,
     InteractionPrefs,
+    Providers,
     TurnCompleted,
 )
 from crowspeak_engine.analyzers import AnalysisError, AnalyzerContext
@@ -224,11 +225,13 @@ async def test_conversation_override_beats_session_default(es_learner):
 
 
 async def test_enabling_corrections_without_a_json_provider_fails_fast(es_learner):
-    conv, _, _ = make(es_learner)
-    conv._analyzer_llm = FakeLLM()  # no complete_json
+    engine = Engine(providers=Providers(default=FakeLLM(), jobs={"corrections": FakeLLM()}))
+    conv = engine.start_session(es_learner, ES_PREFS, Features(corrections=True)).converse()
 
-    with pytest.raises(ValueError, match="complete_json"):
+    with pytest.raises(ValueError, match="complete_json") as excinfo:
         await collect(conv)
+    assert "corrections" in str(excinfo.value)
+    assert "analyzer_llm" not in str(excinfo.value)
     assert conv.history == []
 
 

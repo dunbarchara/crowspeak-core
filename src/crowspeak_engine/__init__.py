@@ -20,6 +20,7 @@ from .events import (
 from .expression import EXPRESSIONS
 from .features import Features
 from .llm.base import JSONProvider, LLMProvider
+from .llm.providers import JOB_CORRECTIONS, JOB_NPC, ProviderError, Providers
 from .npc import Npc
 from .prefs import InteractionPrefs
 from .proficiency import Proficiency
@@ -36,7 +37,11 @@ __all__ = [
     "Corrections",
     "CorrectionsAnalyzer",
     "CorrectionsReady",
+    "JOB_CORRECTIONS",
+    "JOB_NPC",
     "JSONProvider",
+    "ProviderError",
+    "Providers",
     "SEVERITIES",
     "ConstraintError",
     "Conversation",

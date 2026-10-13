@@ -21,7 +21,7 @@ from .events import (
 )
 from .expression import DEFAULT_EXPRESSION, EXPRESSIONS, Expression, ExpressionTagParser
 from .features import Features, ResolvedFeatures, resolve_features
-from .llm.base import LLMProvider
+from .llm.providers import JOB_NPC, Providers
 from .npc import Npc
 from .prefs import InteractionPrefs, resolve_prefs
 from .prompts import build_system_prompt
@@ -41,19 +41,18 @@ class Conversation:
         self,
         session: Session,
         npc: Npc,
-        llm: LLMProvider,
+        providers: Providers,
         prefs: InteractionPrefs | None = None,
         features: Features | None = None,
-        analyzer_llm: LLMProvider | None = None,
     ) -> None:
         self.conversation_id = str(uuid.uuid4())
         self.session = session
         self.npc = npc
         self.history: list[Message] = []
-        self._llm = llm
+        self._providers = providers
+        self._llm = providers.for_job(JOB_NPC, "stream")  # fail at converse(), not mid-turn
         self._prefs = prefs
         self._features = features
-        self._analyzer_llm = analyzer_llm or llm
         self._analysis_tasks: set[asyncio.Task] = set()  # keeps tasks alive until done
         self.resolve()  # fail fast on constraint violations
 
@@ -117,12 +116,8 @@ class Conversation:
         learner = self.session.learner.language
         if self.resolve()[0] != learner.target:
             return None  # the learner isn't expected to write in their target language
-        if not hasattr(self._analyzer_llm, "complete_json"):
-            raise ValueError(
-                "Features.corrections needs an analyzer LLM with complete_json() "
-                "(pass analyzer_llm= to Engine)"
-            )
-        return CorrectionsAnalyzer(self._analyzer_llm)
+        # Raises ProviderError (a ValueError) if the job's provider can't return JSON.
+        return CorrectionsAnalyzer(self._providers.for_job(CorrectionsAnalyzer.name, "json"))
 
     def _attach_corrections(self, message_id: str, corrections: Corrections) -> None:
         for i, m in enumerate(self.history):
