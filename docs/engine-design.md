@@ -146,7 +146,7 @@ If a consumer stops consuming `send_text` mid-stream (task cancelled, client dis
 
 ### Providers, Jobs and Models
 
-Status: **the registry and the config layer (including the env mapper) are implemented**; CLI support for per-job providers and generators are still planned (Macro epic "Foundations: per-job LLM providers and installable engine package"). The CLI still builds one provider with `provider_from_env()`.
+Status: **the registry, the config layer (including the env mapper) and CLI support are implemented**; generators are still planned (Macro epic "Foundations: per-job LLM providers and installable engine package"). The CLI builds its engine from `providers_from_env()`, and `--debug` prints the provider and model serving each built-in job.
 
 **Why.** Different LLM work wants different backends: a larger model for corrections, a cheap or local one for the NPC, and a consumer's own for jobs the engine doesn't know (for example generating a day's task scenarios). Each may point at a different endpoint or key per environment.
 
@@ -169,9 +169,9 @@ Status: **the registry and the config layer (including the env mapper) are imple
 2. **Declarative config.** `ProviderConfig(kind, model, endpoint, api_key, api_version)` describes one provider; `build_provider(config)` builds it and `providers_from_config(default, jobs)` builds a registry. This reads no environment, supports a different endpoint or key per job, and keeps `api_key` out of `repr`.
 3. **Environment mapper** (`llm/factory.py`, the only code in the engine that reads env), for the CLI, tests and local development:
    - `LLM_PROVIDER` selects the default provider (`azure` if unset). `provider_from_env()` is the single-provider shorthand.
-   - `providers_from_env(jobs=("npc", "corrections"))` reads `LLM_<JOB>_PROVIDER` and `LLM_<JOB>_MODEL` for each job it is given (job upper-cased, non-alphanumerics replaced by `_`, for example `LLM_CORRECTIONS_PROVIDER=azure`). A provider-only override builds that kind with its own model variable; a model-only override builds the default's kind with that model. A job with neither falls back to the default.
+   - `providers_from_env(jobs=("npc", "corrections"))` reads `LLM_<JOB>_PROVIDER`, `_MODEL`, `_ENDPOINT`, `_API_KEY` and `_API_VERSION` for each job it is given (job upper-cased, non-alphanumerics replaced by `_`, for example `LLM_CORRECTIONS_PROVIDER=azure`). The kind is the job's `_PROVIDER` or, if unset, the default's. Each override that is set replaces just that field; every other field comes from the kind's provider-level variables (`AZURE_OPENAI_*`, `LOCAL_LLM_*`). A job with none set falls back to the default.
+   - So two jobs can target different Azure resources, keys, deployments and API versions: `LLM_CORRECTIONS_ENDPOINT`, `LLM_CORRECTIONS_API_KEY`, `LLM_CORRECTIONS_MODEL`, `LLM_CORRECTIONS_API_VERSION`. `_ENDPOINT` means the Azure endpoint or the local base URL, matching `ProviderConfig.endpoint`; `_API_VERSION` applies to azure only. These are flat per-job overrides, not named profiles; anything richer uses level 2.
    - Jobs are named by the caller, not discovered, so a consumer-defined job is passed in `jobs=`.
-   - Endpoint and key stay provider-level (`AZURE_OPENAI_*`, `LOCAL_LLM_*`) and shared by every job on that provider. A job that needs its own account uses level 2.
    - Blank values count as unset. An unknown provider kind, or a missing Azure variable, raises `ValueError` naming the variable.
    - This makes the useful mixed setup expressible from env: a local NPC (`LLM_PROVIDER=local`) with corrections on Azure (`LLM_CORRECTIONS_PROVIDER=azure`). It stays subject to the testing policy: live Azure calls need explicit confirmation.
 
@@ -225,5 +225,5 @@ These are intentionally open and are the first things to discuss after this foun
 - **History growth.** History is replayed in full each turn, with no truncation or token budgeting.
 - **Persistence.** Sessions and conversations are in-memory only.
 - **Gateway and protocol.** A wire format for events (WebSocket) and a place for `SessionStarted` to be sent.
-- **Multi-provider job routing.** The `Providers` registry and per-job configuration (`ProviderConfig`, `providers_from_env`) are implemented (section 8, "Providers, Jobs and Models"). Still open: a CLI that builds and shows the provider and model per job.
+- **Multi-provider job routing.** The `Providers` registry and per-job configuration (`ProviderConfig`, `providers_from_env`) are implemented, and the CLI builds from them and shows the provider and model per job under `--debug` (section 8, "Providers, Jobs and Models"). Nothing further is open for routing itself; the generator protocol is tracked separately below.
 - **Non-conversation structured jobs (generators).** A protocol and `engine.generate()` for work with no conversation, such as generating a day's task scenarios scaled to the learner's proficiency. Tracked in the same epic.

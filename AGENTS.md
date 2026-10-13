@@ -2,6 +2,10 @@
 
 Python engine (`crowspeak_engine`), reference CLI (`crowspeak_cli`) and design docs. See `docs/engine-design.md`.
 
+## Setup
+
+`uv sync` alone installs only the engine's base dependency (`openai`) and removes anything else, so name the extras you need: `uv sync --extra cli --extra dev` (what CI uses), plus `--extra tui` for the TUI. `python-dotenv` is in `cli`; `pytest`, `ruff` and `bandit` are in `dev`. A later plain `uv sync` or `uv run` re-syncs without extras, so pass `--extra` to `uv run` too (for example `uv run --extra cli crowspeak-cli`).
+
 ## Testing policy
 
 - **Default tests must not touch the network.** Unit tests use `FakeLLM` (`tests/conftest.py`). Functional/wiring tests against a real model use the local provider: run Ollama and set `LLM_PROVIDER=local` (see `.env.example`).

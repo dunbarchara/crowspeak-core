@@ -131,6 +131,63 @@ def test_azure_model_override_does_not_need_the_deployment_variable(clean_env):
     assert providers.for_job(JOB_CORRECTIONS)._deployment == "gpt-x"
 
 
+def test_a_job_can_target_a_different_azure_resource(clean_env):
+    clean_env.setenv("LLM_PROVIDER", "azure")
+    clean_env.setenv("AZURE_OPENAI_ENDPOINT", "https://east.openai.azure.com/")
+    clean_env.setenv("AZURE_OPENAI_API_KEY", "key-east")
+    clean_env.setenv("AZURE_OPENAI_DEPLOYMENT", "mini")
+    clean_env.setenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview")
+    clean_env.setenv("LLM_CORRECTIONS_ENDPOINT", "https://west.services.ai.azure.com/")
+    clean_env.setenv("LLM_CORRECTIONS_API_KEY", "key-west")
+    clean_env.setenv("LLM_CORRECTIONS_MODEL", "big")
+    clean_env.setenv("LLM_CORRECTIONS_API_VERSION", "2025-03-01-preview")
+
+    providers = providers_from_env()
+
+    default = providers.default
+    corrections = providers.for_job(JOB_CORRECTIONS, "json")
+    assert isinstance(corrections, AzureOpenAIProvider)  # kind inherited from LLM_PROVIDER
+    assert (default._endpoint, default._deployment) == ("https://east.openai.azure.com/", "mini")
+    assert default._client.api_key == "key-east"
+    assert default._client._api_version == "2024-12-01-preview"
+    assert (corrections._endpoint, corrections._deployment) == (
+        "https://west.services.ai.azure.com/",
+        "big",
+    )
+    assert corrections._client.api_key == "key-west"
+    assert corrections._client._api_version == "2025-03-01-preview"
+
+
+def test_job_overrides_apply_field_by_field(clean_env):
+    clean_env.setenv("LLM_PROVIDER", "azure")
+    clean_env.setenv("AZURE_OPENAI_ENDPOINT", "https://east.openai.azure.com/")
+    clean_env.setenv("AZURE_OPENAI_API_KEY", "key-east")
+    clean_env.setenv("AZURE_OPENAI_DEPLOYMENT", "mini")
+    clean_env.setenv("LLM_NPC_API_KEY", "key-npc")  # only the key differs
+
+    npc = providers_from_env().for_job(JOB_NPC)
+
+    assert npc._client.api_key == "key-npc"
+    assert npc._endpoint == "https://east.openai.azure.com/"  # inherited
+    assert npc._deployment == "mini"  # inherited
+
+
+def test_local_job_can_target_another_server(clean_env):
+    clean_env.setenv("LLM_PROVIDER", "azure")
+    clean_env.setenv("AZURE_OPENAI_ENDPOINT", "https://x.openai.azure.com/")
+    clean_env.setenv("AZURE_OPENAI_API_KEY", "k")
+    clean_env.setenv("AZURE_OPENAI_DEPLOYMENT", "d")
+    clean_env.setenv("LLM_NPC_PROVIDER", "local")
+    clean_env.setenv("LLM_NPC_ENDPOINT", "http://gpu-box:11434/v1")
+    clean_env.setenv("LLM_NPC_MODEL", "gemma")
+
+    npc = providers_from_env().for_job(JOB_NPC)
+
+    assert isinstance(npc, LocalOpenAIProvider)
+    assert npc._model == "gemma"
+    assert str(npc._client.base_url).rstrip("/") == "http://gpu-box:11434/v1"
+
+
 def test_job_names_are_normalised_and_only_listed_jobs_are_read(clean_env):
     clean_env.setenv("LLM_PROVIDER", "local")
     clean_env.setenv("LLM_DAILY_TASKS_MODEL", "tasks-model")

@@ -6,8 +6,6 @@ import os
 import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 from crowspeak_cli import render
 from crowspeak_engine import (
     AnalyzerError,
@@ -24,7 +22,50 @@ from crowspeak_engine import (
     TranscriptDelta,
     TurnCompleted,
 )
-from crowspeak_engine.llm import provider_from_env
+from crowspeak_engine.llm import JOB_CORRECTIONS, JOB_NPC, Providers, providers_from_env
+
+
+def _load_env() -> None:
+    """Load `.env` into the environment (the engine never does). Needs the `cli` extra."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        print(
+            "crowspeak-cli: python-dotenv is not installed. "
+            "Install the CLI extras: uv sync --extra cli",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from None
+    load_dotenv()
+
+
+def _describe(provider: object) -> str:
+    describe = getattr(provider, "describe", None)
+    return describe() if callable(describe) else repr(provider)
+
+
+def _provider_lines(providers: Providers, corrections: bool) -> list[str]:
+    """What serves each built-in job: the default, or the job's own provider."""
+    lines = [f"default: {_describe(providers.default)}"]
+    for job in (JOB_NPC, JOB_CORRECTIONS):
+        own = providers.jobs.get(job)
+        text = _describe(own) if own is not None else "(default)"
+        if job == JOB_CORRECTIONS and not corrections:
+            text += " (unused: --corrections is off)"
+        lines.append(f"{job}: {text}")
+    return lines
+
+
+def _debug_env() -> str:
+    """The provider-selecting variables as the process sees them (shell beats .env)."""
+    names = sorted(
+        n
+        for n in os.environ
+        if n == "LLM_PROVIDER" or n.startswith(("LLM_NPC_", "LLM_CORRECTIONS_"))
+    )
+    # Secrets are reported as set or not, never printed.
+    shown = ((n, "(set)" if n.endswith("_API_KEY") else os.environ[n]) for n in names)
+    return " ".join(f"{n}={v}" for n, v in shown) or "(none set; defaults apply)"
 
 
 def _prompt(label: str, default: str) -> str:
@@ -191,23 +232,28 @@ def main() -> None:
         help="Show feedback on your messages after each reply (needs a JSON-capable LLM)",
     )
     parser.add_argument(
-        "--debug", action="store_true", help="Print which LLM provider/model is in use"
+        "--debug", action="store_true", help="Print which LLM provider/model serves each job"
     )
     args = parser.parse_args()
 
-    load_dotenv()
+    _load_env()
     # Windows terminals default to a codepage (e.g. cp1252) that can't print
     # Japanese or other non-Latin scripts; force UTF-8 so target-language output
     # doesn't crash the loop.
     sys.stdout.reconfigure(encoding="utf-8")
 
     persona = _load_persona(args.persona)
-    llm = provider_from_env()
+    try:
+        providers = providers_from_env()
+    except ValueError as e:  # unknown provider kind, or missing Azure variables
+        print(f"crowspeak-cli: {e}", file=sys.stderr)
+        raise SystemExit(1) from None
     if args.debug:
-        # load_dotenv() does not override variables already set in the shell.
-        print(f"[debug] LLM_PROVIDER={os.environ.get('LLM_PROVIDER', 'azure')}", file=sys.stderr)
-        print(f"[debug] {getattr(llm, 'describe', lambda: repr(llm))()}", file=sys.stderr)
-    engine = Engine(llm)
+        # .env does not override variables already set in the shell.
+        print(f"[debug] env: {_debug_env()}", file=sys.stderr)
+        for line in _provider_lines(providers, args.corrections):
+            print(f"[debug] {line}", file=sys.stderr)
+    engine = Engine(providers=providers)
     learner, prefs = configure_learner()
     try:
         asyncio.run(

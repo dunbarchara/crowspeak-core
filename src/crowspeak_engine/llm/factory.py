@@ -99,15 +99,22 @@ def _default_kind() -> str:
     return _kind("LLM_PROVIDER") or "azure"
 
 
-def _config_from_env(kind: str, model: str | None = None) -> ProviderConfig:
-    """Read `kind`'s provider-level variables. A given `model` replaces the model variable."""
+def _config_from_env(
+    kind: str,
+    *,
+    model: str | None = None,
+    endpoint: str | None = None,
+    api_key: str | None = None,
+    api_version: str | None = None,
+) -> ProviderConfig:
+    """Read `kind`'s provider-level variables; any given argument replaces its variable."""
     if kind == "azure":
         config = ProviderConfig(
             kind="azure",
             model=model or _env("AZURE_OPENAI_DEPLOYMENT"),
-            endpoint=_env("AZURE_OPENAI_ENDPOINT"),
-            api_key=_env("AZURE_OPENAI_API_KEY"),
-            api_version=_env("AZURE_OPENAI_API_VERSION"),
+            endpoint=endpoint or _env("AZURE_OPENAI_ENDPOINT"),
+            api_key=api_key or _env("AZURE_OPENAI_API_KEY"),
+            api_version=api_version or _env("AZURE_OPENAI_API_VERSION"),
         )
         missing = [var for field_, var in _AZURE_ENV.items() if not getattr(config, field_)]
         if missing:
@@ -116,7 +123,8 @@ def _config_from_env(kind: str, model: str | None = None) -> ProviderConfig:
     return ProviderConfig(
         kind="local",
         model=model or _env("LOCAL_LLM_MODEL"),
-        endpoint=_env("LOCAL_LLM_BASE_URL"),
+        endpoint=endpoint or _env("LOCAL_LLM_BASE_URL"),
+        api_key=api_key,
     )
 
 
@@ -128,20 +136,26 @@ def provider_from_env() -> LLMProvider:
 def providers_from_env(jobs: Iterable[str] = (JOB_NPC, JOB_CORRECTIONS)) -> Providers:
     """Build a `Providers` from the environment.
 
-    `LLM_PROVIDER` selects the default. For each job name in `jobs`, `LLM_<JOB>_PROVIDER`
-    and `LLM_<JOB>_MODEL` (job upper-cased, other characters replaced by `_`) assign it its
-    own provider kind and/or model; a job with neither falls back to the default. Jobs are
-    named by the caller rather than discovered, so pass any consumer-defined ones. Endpoint
-    and key stay provider-level (`AZURE_OPENAI_*`, `LOCAL_LLM_*`) and shared; give a job its
-    own account with `providers_from_config`.
+    `LLM_PROVIDER` selects the default. For each job name in `jobs` (upper-cased, other
+    characters replaced by `_`), `LLM_<JOB>_PROVIDER`, `_MODEL`, `_ENDPOINT`, `_API_KEY` and
+    `_API_VERSION` give it its own provider kind and/or settings. Each one that is set
+    replaces just that field; the rest come from the kind's provider-level variables
+    (`AZURE_OPENAI_*`, `LOCAL_LLM_*`). A job with none set falls back to the default. Jobs are
+    named by the caller rather than discovered, so pass any consumer-defined ones.
+    `_API_VERSION` applies to azure only. For anything richer, use `providers_from_config`.
     """
     default_kind = _default_kind()
     configs: dict[str, ProviderConfig] = {}
     for job in jobs:
         prefix = "LLM_" + re.sub(r"[^0-9A-Za-z]", "_", job).upper()
         kind = _kind(f"{prefix}_PROVIDER")
-        model = _env(f"{prefix}_MODEL")
-        if kind is None and model is None:
+        overrides = {
+            "model": _env(f"{prefix}_MODEL"),
+            "endpoint": _env(f"{prefix}_ENDPOINT"),
+            "api_key": _env(f"{prefix}_API_KEY"),
+            "api_version": _env(f"{prefix}_API_VERSION"),
+        }
+        if kind is None and not any(overrides.values()):
             continue
-        configs[job] = _config_from_env(kind or default_kind, model)
+        configs[job] = _config_from_env(kind or default_kind, **overrides)
     return providers_from_config(_config_from_env(default_kind), configs)
