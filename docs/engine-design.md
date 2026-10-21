@@ -35,7 +35,7 @@ Use these terms consistently in code, docs and tasks.
 
 | Term | Meaning |
 |---|---|
-| **Learner** | The human practicing a language, as a party in a session: a `LanguageProfile` plus an id. The engine has no accounts, so it never says "user". |
+| **Learner** | The human practicing one language, as a party in a session: a `LanguageProfile` plus an id (one study track; planned to also carry persisted defaults and declared data, see section 8). The engine has no accounts, so it never says "user". |
 | **User** | An account in a wrapper app (login, billing, a `users` table). Not an engine concept. A user maps to a Learner at the app boundary. |
 | **NPC** | The character the learner talks to: persona, `LanguageProfile`, optional constraints. |
 | **Speaker** | Only the generic "whoever is talking", as in `speaker_id` (an NPC id, or `"user"` for now; it will become the learner id, see the Macro task "Use learner id as speaker_id"). It never means the NPC or the NPC's LLM. |
@@ -180,6 +180,67 @@ Status: **the registry, the config layer (including the env mapper) and CLI supp
 
 **Non-conversation jobs.** Analyzers are turn-shaped (`AnalyzerContext`). Work that has no conversation, such as daily task scenarios, is a *generator* with its own job name that runs through the same registry. Its protocol is a separate task in the epic. Scheduling, caching and persistence of generated content belong to the wrapper app, not core.
 
+### Learner profile and the engine/wrapper boundary
+
+Status: **design only, nothing built** (Macro: "Define learner profile scope and the engine/wrapper boundary" and its follow-ups). Today `Learner` is `LanguageProfile` plus an id, and `Session` holds `prefs` and `features`; nothing is persisted.
+
+**Why.** A web wrapper loads a learner's context when they log in and expects changes they make (level, response language, features, wanted words) to survive the next login. The engine must make loading that context cheap and must use it well, without owning a database, accounts or retention.
+
+**The split.** The same shape as providers: a definition in the engine, implementations outside it.
+
+| Concern | Owner |
+|---|---|
+| Schema and meaning of the profile (what "wanted word" or a status means) | Engine |
+| Use: profile fields shaping NPC prompts, generators and analyzers | Engine |
+| Serialization (`to_dict` / `from_dict`) and a `LearnerStore` protocol with an in-memory implementation | Engine |
+| Real storage, accounts, retention, deletion, multi-tenancy | Wrapper |
+| Applying engine-emitted updates to stored state | Wrapper |
+| Raw history (transcripts, past tasks) | Wrapper; the engine accepts summaries or recent context, never the raw log |
+
+```python
+learner = Learner.from_dict(row.profile)            # wrapper owns storage
+tasks = await engine.generate(DailyTasks(count=5), learner)
+```
+
+**One `Learner` per target language.** A `Learner` is one study track: one `LanguageProfile` with a required target, plus that track's data. Vocabulary, level and error patterns are per language anyway. A wrapper maps one person (a *User*) onto as many learners as languages they study; the engine never sees that mapping. The learner `id` stays opaque.
+
+**Tiers of profile data.** They differ in who writes them and how fast they change.
+
+1. **Declared** (specified now): set by the learner or wrapper, stable.
+   - `language` (`LanguageProfile`; regional variant is part of the language code, for example `es-MX`) and `id`.
+   - Default `InteractionPrefs` and `Features` (see below).
+   - `goals` and `interests`: short free-text lists.
+   - `wanted_vocabulary`: terms in the target language the learner wants practised, each with an optional note or source.
+   - `schema_version`.
+2. **Observed** (principles fixed now, fields designed later): evolves, produced by analyzers.
+   - Vocabulary seen, learning and known; recurring error patterns from corrections; topics already covered.
+   - The engine emits observations as events (for example `VocabularyObserved`), like `CorrectionsReady`. The wrapper merges them into storage. There is no engine write-through, which also avoids concurrent sessions overwriting each other: deltas merge, whole-profile saves don't.
+   - Reserved, not built: `last_seen` and a status enum (`new` / `learning` / `known`) on vocabulary entries. No scheduling or spaced repetition; that is a different product.
+   - The follow-up tasks (vocabulary observation, error-pattern memory, topic history) size the details. Open there: what makes a word "known", how deltas merge, how the observed set is bounded.
+3. **History**: wrapper-owned (above).
+
+**Defaults live on the profile.** The persisted `InteractionPrefs` and `Features` defaults are per learner, so they belong on `Learner`; a user who changes them in a settings screen expects them kept. `Session` and `Conversation` hold overrides on top, extending the layering in section 4. Most specific wins:
+
+1. conversation override
+2. session override
+3. the learner's persisted defaults
+4. engine natural defaults
+
+`Session.set_prefs` / `set_features` remain session-scoped overrides. Making one persistent is a wrapper decision: it writes the new value onto the learner and saves it. The engine does not guess whether a mid-session change was meant to stick.
+
+**Prompt budget.** The profile is never sent to the model wholesale. Each consumer takes a small, bounded selection (for example a few wanted words not yet used, preferring those near the learner's level), so token use stays flat as lists grow. A disabled feature costs no prompt tokens. The policy itself is designed in the learner-supplied vocabulary task.
+
+**Serialized form.**
+- `Learner.to_dict()` / `Learner.from_dict()` follow the `Corrections` pattern: additive and tolerant of missing optional keys.
+- An integer `schema_version` is written from the start. A payload with a newer version than the engine knows raises a clear error instead of silently dropping data; unknown extra keys within a known version are ignored.
+- The engine still reads no environment or filesystem outside `llm/factory.py`; a `LearnerStore` implementation that does I/O lives in the wrapper.
+
+**Privacy constraints for the open-source core.**
+- Ids are opaque.
+- The schema has no name, email or other PII fields.
+- Free-text fields (`goals`, `interests`, wanted-word notes) are the learner's own content, so the engine neither logs them nor sends them anywhere except the prompt of that learner's own job.
+- Deletion and retention are the wrapper's responsibility.
+
 ## 9. Package layout
 
 ```
@@ -224,7 +285,7 @@ These are intentionally open and are the first things to discuss after this foun
 - **Voice.** `send_audio`, plus `AgentAudioChunk` and VAD/STT/TTS orchestration.
 - **Corrections.** Designed (see section 7) but not yet implemented (task 4b). The Phase 1 latency target (under 1s) also needs measuring.
 - **History growth.** History is replayed in full each turn, with no truncation or token budgeting.
-- **Persistence.** Sessions and conversations are in-memory only.
+- **Persistence.** Sessions and conversations are in-memory only. The learner profile boundary is designed (section 8, "Learner profile and the engine/wrapper boundary"): the engine owns the schema and a `LearnerStore` protocol, the wrapper owns storage. Not built yet.
 - **Gateway and protocol.** A wire format for events (WebSocket) and a place for `SessionStarted` to be sent.
 - **Multi-provider job routing.** The `Providers` registry and per-job configuration (`ProviderConfig`, `providers_from_env`) are implemented, and the CLI builds from them and shows the provider and model per job under `--debug` (section 8, "Providers, Jobs and Models"). Nothing further is open for routing itself; the generator protocol is tracked separately below.
 - **Non-conversation structured jobs (generators).** A protocol and `engine.generate()` for work with no conversation, such as generating a day's task scenarios scaled to the learner's proficiency. Tracked in the same epic.
