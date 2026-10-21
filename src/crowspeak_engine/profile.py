@@ -25,3 +25,19 @@ class LanguageProfile:
             raise ValueError("native and target language must differ")
         if self.proficiency is None:
             raise ValueError("a target language requires a proficiency")
+
+    def to_dict(self) -> dict:
+        return {
+            "native": self.native,
+            "target": self.target,
+            "proficiency": None if self.proficiency is None else self.proficiency.value,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> LanguageProfile:
+        proficiency = data.get("proficiency")
+        return cls(
+            native=data["native"],
+            target=data.get("target"),
+            proficiency=None if proficiency is None else Proficiency(proficiency),
+        )

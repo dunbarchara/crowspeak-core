@@ -20,6 +20,19 @@ class InteractionPrefs:
     learner_input_language: str | None = None
     npc_response_language: str | None = None
 
+    def to_dict(self) -> dict:
+        return {
+            "learner_input_language": self.learner_input_language,
+            "npc_response_language": self.npc_response_language,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> InteractionPrefs:
+        return cls(
+            learner_input_language=data.get("learner_input_language"),
+            npc_response_language=data.get("npc_response_language"),
+        )
+
 
 def _pick(candidates: list[str | None], allowed: frozenset[str] | None, what: str) -> str:
     options = [c for c in candidates if c]

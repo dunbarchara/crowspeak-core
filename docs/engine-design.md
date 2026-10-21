@@ -182,7 +182,7 @@ Status: **the registry, the config layer (including the env mapper) and CLI supp
 
 ### Learner profile and the engine/wrapper boundary
 
-Status: **design only, nothing built** (Macro: "Define learner profile scope and the engine/wrapper boundary" and its follow-ups). Today `Learner` is `LanguageProfile` plus an id, and `Session` holds `prefs` and `features`; nothing is persisted.
+Status: **partly built.** `Learner` serializes (`to_dict` / `from_dict`, integer `schema_version`), carries the default `InteractionPrefs` and `Features`, and `LearnerStore` plus `InMemoryLearnerStore` exist. The declared fields (`goals`, `interests`, `wanted_vocabulary`) and the observed tier are still design only (Macro: "Define learner profile scope and the engine/wrapper boundary" and its follow-ups).
 
 **Why.** A web wrapper loads a learner's context when they log in and expects changes they make (level, response language, features, wanted words) to survive the next login. The engine must make loading that context cheap and must use it well, without owning a database, accounts or retention.
 
@@ -285,7 +285,7 @@ These are intentionally open and are the first things to discuss after this foun
 - **Voice.** `send_audio`, plus `AgentAudioChunk` and VAD/STT/TTS orchestration.
 - **Corrections.** Designed (see section 7) but not yet implemented (task 4b). The Phase 1 latency target (under 1s) also needs measuring.
 - **History growth.** History is replayed in full each turn, with no truncation or token budgeting.
-- **Persistence.** Sessions and conversations are in-memory only. The learner profile boundary is designed (section 8, "Learner profile and the engine/wrapper boundary"): the engine owns the schema and a `LearnerStore` protocol, the wrapper owns storage. Not built yet.
+- **Persistence.** Sessions and conversations are in-memory only. The learner profile boundary is designed (section 8, "Learner profile and the engine/wrapper boundary"): the engine owns the schema and a `LearnerStore` protocol, the wrapper owns storage. Serialization and the protocol are built; the declared vocabulary fields and observed data are not.
 - **Gateway and protocol.** A wire format for events (WebSocket) and a place for `SessionStarted` to be sent.
 - **Multi-provider job routing.** The `Providers` registry and per-job configuration (`ProviderConfig`, `providers_from_env`) are implemented, and the CLI builds from them and shows the provider and model per job under `--debug` (section 8, "Providers, Jobs and Models"). Nothing further is open for routing itself; the generator protocol is tracked separately below.
 - **Non-conversation structured jobs (generators).** A protocol and `engine.generate()` for work with no conversation, such as generating a day's task scenarios scaled to the learner's proficiency. Tracked in the same epic.

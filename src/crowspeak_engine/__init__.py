@@ -5,7 +5,7 @@ from .conversation import Conversation
 from .conversation_types import Message, Role
 from .corrections import CATEGORIES, SEVERITIES, CorrectionItem, Corrections
 from .engine import Engine
-from .errors import ConstraintError
+from .errors import ConstraintError, UnsupportedSchemaVersion
 from .events import (
     AnalyzerError,
     ConversationEvent,
@@ -19,6 +19,7 @@ from .events import (
 )
 from .expression import EXPRESSIONS
 from .features import Features
+from .learner_store import InMemoryLearnerStore, LearnerStore
 from .llm.base import JSONProvider, LLMProvider
 from .llm.providers import JOB_CORRECTIONS, JOB_NPC, ProviderError, Providers
 from .npc import Npc
@@ -52,10 +53,12 @@ __all__ = [
     "Event",
     "ExpressionChange",
     "Features",
+    "InMemoryLearnerStore",
     "InteractionPrefs",
     "LLMProvider",
     "LanguageProfile",
     "Learner",
+    "LearnerStore",
     "Message",
     "Npc",
     "Proficiency",
@@ -64,4 +67,5 @@ __all__ = [
     "SessionStarted",
     "TranscriptDelta",
     "TurnCompleted",
+    "UnsupportedSchemaVersion",
 ]

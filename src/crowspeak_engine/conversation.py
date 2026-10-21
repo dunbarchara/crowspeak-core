@@ -61,7 +61,8 @@ class Conversation:
         return self._prefs
 
     def set_prefs(self, prefs: InteractionPrefs | None) -> None:
-        resolve_prefs(self.session.learner.language, self.npc, prefs, self.session.prefs)
+        learner = self.session.learner
+        resolve_prefs(learner.language, self.npc, prefs, self.session.prefs, learner.prefs)
         self._prefs = prefs
 
     @property
@@ -73,12 +74,15 @@ class Conversation:
         self._features = features
 
     def resolved_features(self) -> ResolvedFeatures:
-        return resolve_features(self._features, self.session.features)
+        return resolve_features(
+            self._features, self.session.features, self.session.learner.features
+        )
 
     def resolve(self) -> tuple[str, str]:
         """The (input_language, response_language) currently in effect."""
+        learner = self.session.learner
         return resolve_prefs(
-            self.session.learner.language, self.npc, self._prefs, self.session.prefs
+            learner.language, self.npc, self._prefs, self.session.prefs, learner.prefs
         )
 
     def system_prompt(self) -> str:

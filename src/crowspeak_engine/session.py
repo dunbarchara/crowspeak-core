@@ -6,6 +6,7 @@ import uuid
 from dataclasses import dataclass, field
 
 from .conversation import Conversation
+from .errors import UnsupportedSchemaVersion
 from .events import SessionStarted
 from .features import Features
 from .llm.providers import Providers
@@ -13,15 +14,47 @@ from .npc import Npc
 from .prefs import InteractionPrefs, resolve_prefs
 from .profile import LanguageProfile
 
+SCHEMA_VERSION = 1
+
 
 @dataclass(frozen=True)
 class Learner:
+    """One study track: a target language plus its persisted defaults. `prefs` and
+    `features` are the learner's defaults, under any session or conversation override."""
+
     language: LanguageProfile
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
+    prefs: InteractionPrefs | None = None
+    features: Features | None = None
 
     def __post_init__(self) -> None:
         if self.language.target is None:
             raise ValueError("a learner must have a target language")
+
+    def to_dict(self) -> dict:
+        return {
+            "schema_version": SCHEMA_VERSION,
+            "id": self.id,
+            "language": self.language.to_dict(),
+            "prefs": None if self.prefs is None else self.prefs.to_dict(),
+            "features": None if self.features is None else self.features.to_dict(),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Learner:
+        version = data["schema_version"]
+        if version > SCHEMA_VERSION:
+            raise UnsupportedSchemaVersion(
+                f"learner schema_version {version} is newer than the supported {SCHEMA_VERSION}"
+            )
+        prefs = data.get("prefs")
+        features = data.get("features")
+        return cls(
+            language=LanguageProfile.from_dict(data["language"]),
+            id=data["id"],
+            prefs=None if prefs is None else InteractionPrefs.from_dict(prefs),
+            features=None if features is None else Features.from_dict(features),
+        )
 
 
 class Session:
@@ -47,7 +80,7 @@ class Session:
         """Change the session-wide defaults. Atomic: raises ConstraintError, changing
         nothing, if an existing conversation's Npc can't accommodate them."""
         for conv in self.conversations.values():
-            resolve_prefs(self.learner.language, conv.npc, conv.prefs, prefs)
+            resolve_prefs(self.learner.language, conv.npc, conv.prefs, prefs, self.learner.prefs)
         self._prefs = prefs
 
     @property

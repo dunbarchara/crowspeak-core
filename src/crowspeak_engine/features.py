@@ -19,6 +19,13 @@ class Features:
     # Run the corrections analyzer on learner messages and emit CorrectionsReady events.
     corrections: bool | None = None
 
+    def to_dict(self) -> dict:
+        return {"expression": self.expression, "corrections": self.corrections}
+
+    @classmethod
+    def from_dict(cls, data: dict) -> Features:
+        return cls(expression=data.get("expression"), corrections=data.get("corrections"))
+
 
 @dataclass(frozen=True)
 class ResolvedFeatures:
