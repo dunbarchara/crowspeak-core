@@ -39,7 +39,7 @@ def test_build_azure_from_config():
 
     assert isinstance(provider, AzureOpenAIProvider)
     assert provider._deployment == "big"
-    assert "x.openai.azure.com" in provider.describe()
+    assert provider.describe() == "azure deployment=big endpoint=https://x.openai.azure.com/"
 
 
 def test_build_local_from_config_uses_defaults_for_unset_fields():
