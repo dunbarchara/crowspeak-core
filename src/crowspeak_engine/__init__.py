@@ -19,6 +19,7 @@ from .events import (
 )
 from .expression import EXPRESSIONS
 from .features import Features
+from .generators import GenerationError, Generator, GeneratorContext
 from .learner_store import InMemoryLearnerStore, LearnerStore
 from .llm.base import JSONProvider, LLMProvider
 from .llm.providers import JOB_CORRECTIONS, JOB_NPC, ProviderError, Providers
@@ -53,6 +54,9 @@ __all__ = [
     "Event",
     "ExpressionChange",
     "Features",
+    "GenerationError",
+    "Generator",
+    "GeneratorContext",
     "InMemoryLearnerStore",
     "InteractionPrefs",
     "LLMProvider",

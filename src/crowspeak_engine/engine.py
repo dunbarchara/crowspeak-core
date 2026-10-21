@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from typing import Any, TypeVar
+
 from .features import Features
+from .generators import GenerationError, Generator, GeneratorContext, validate
 from .llm.base import LLMProvider
 from .llm.providers import JOB_CORRECTIONS, Providers
 from .prefs import InteractionPrefs
 from .session import Learner, Session
+
+T = TypeVar("T")
 
 
 class Engine:
@@ -43,3 +48,20 @@ class Engine:
         features: Features | None = None,
     ) -> Session:
         return Session(learner, self._providers, prefs, features)
+
+    async def generate(self, generator: Generator[T], learner: Learner, **params: Any) -> T:
+        """Run a structured job that isn't part of a conversation. The generator's `job`
+        picks the provider (else the registry default); the reply is validated against
+        its schema before `parse` sees it. Raises ProviderError if that provider can't
+        return JSON, and GenerationError if the call or the output is unusable."""
+        llm = self._providers.for_job(generator.job, "json")
+        ctx = GeneratorContext(learner, params)
+        try:
+            raw = await llm.complete_json(generator.build_prompt(ctx), generator.schema)
+        except Exception as e:
+            raise GenerationError(f"generator call failed: {e}") from e
+        data = validate(raw, generator.schema)
+        try:
+            return generator.parse(data, ctx)
+        except (ValueError, KeyError, TypeError) as e:
+            raise GenerationError(f"unusable {generator.name} output: {e}") from e

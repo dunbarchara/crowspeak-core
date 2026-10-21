@@ -147,7 +147,7 @@ If a consumer stops consuming `send_text` mid-stream (task cancelled, client dis
 
 ### Providers, Jobs and Models
 
-Status: **the registry, the config layer (including the env mapper) and CLI support are implemented**; generators are still planned (Macro epic "Foundations: per-job LLM providers and installable engine package"). The CLI builds its engine from `providers_from_env()`, and `--debug` prints the provider and model serving each built-in job.
+Status: **the registry, the config layer (including the env mapper), CLI support and the generator protocol are implemented**; the registry work belongs to the Macro epic ("Foundations: per-job LLM providers and installable engine package"). The CLI builds its engine from `providers_from_env()`, and `--debug` prints the provider and model serving each built-in job.
 
 **Why.** Different LLM work wants different backends: a larger model for corrections, a cheap or local one for the NPC, and a consumer's own for jobs the engine doesn't know (for example generating a day's task scenarios). Each may point at a different endpoint or key per environment.
 
@@ -178,7 +178,7 @@ Status: **the registry, the config layer (including the env mapper) and CLI supp
 
 **Voice and translation (names reserved, nothing built).** `stt` and `tts` are jobs, but they are filled by their own protocols (`SpeechToText`, `TextToSpeech`), not `LLMProvider`. Those protocols are defined when the voice work starts, and enabling the voice feature without a provider for them fails fast (section 7). `translation` is an ordinary LLM job unless a non-LLM backend (a translation API) appears, in which case it gets its own protocol the same way.
 
-**Non-conversation jobs.** Analyzers are turn-shaped (`AnalyzerContext`). Work that has no conversation, such as daily task scenarios, is a *generator* with its own job name that runs through the same registry. Its protocol is a separate task in the epic. Scheduling, caching and persistence of generated content belong to the wrapper app, not core.
+**Non-conversation jobs.** Analyzers are turn-shaped (`AnalyzerContext`). Work that has no conversation, such as daily task scenarios, is a *generator* with its own job name that runs through the same registry. The protocol is implemented (`generators/`): a `Generator` has `name`, `job`, `schema`, `build_prompt(ctx)` and `parse(data, ctx)`, where `GeneratorContext` carries the whole `Learner` plus per-call `params`. `engine.generate(generator, learner, **params)` resolves `for_job(generator.job, "json")` (so a missing JSON capability raises `ProviderError`), calls `complete_json`, validates the reply against `schema` in the engine (`generators/validate.py`, a dependency-free JSON-schema subset), and returns `parse`'s result. Call, validation and parse failures raise `GenerationError`. A generator with no assigned provider uses the registry default, so a consumer-defined one needs no configuration. A built-in `ScenarioGenerator` is not built yet. Scheduling, caching and persistence of generated content belong to the wrapper app, not core.
 
 ### Learner profile and the engine/wrapper boundary
 
@@ -288,4 +288,4 @@ These are intentionally open and are the first things to discuss after this foun
 - **Persistence.** Sessions and conversations are in-memory only. The learner profile boundary is designed (section 8, "Learner profile and the engine/wrapper boundary"): the engine owns the schema and a `LearnerStore` protocol, the wrapper owns storage. Serialization and the protocol are built; the declared vocabulary fields and observed data are not.
 - **Gateway and protocol.** A wire format for events (WebSocket) and a place for `SessionStarted` to be sent.
 - **Multi-provider job routing.** The `Providers` registry and per-job configuration (`ProviderConfig`, `providers_from_env`) are implemented, and the CLI builds from them and shows the provider and model per job under `--debug` (section 8, "Providers, Jobs and Models"). Nothing further is open for routing itself; the generator protocol is tracked separately below.
-- **Non-conversation structured jobs (generators).** A protocol and `engine.generate()` for work with no conversation, such as generating a day's task scenarios scaled to the learner's proficiency. Tracked in the same epic.
+- **Non-conversation structured jobs (generators).** The `Generator` protocol and `engine.generate()` are implemented (section 8, "Non-conversation jobs"). Open: a built-in `ScenarioGenerator` that scales item count and difficulty by proficiency.
