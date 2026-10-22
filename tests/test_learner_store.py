@@ -8,13 +8,14 @@ from crowspeak_engine import (
     LanguageProfile,
     Learner,
     Proficiency,
+    Target,
     UnsupportedSchemaVersion,
 )
 
 
 def _full_learner() -> Learner:
     return Learner(
-        LanguageProfile(native="en", target="es-MX", proficiency=Proficiency.B1),
+        LanguageProfile(native="en", target=Target("es-MX", Proficiency.B1)),
         id="learner-1",
         prefs=InteractionPrefs(learner_input_language="en", npc_response_language="es-MX"),
         features=Features(expression=True, corrections=False),
@@ -34,11 +35,11 @@ def test_payload_without_optional_keys():
     data = {
         "schema_version": 1,
         "id": "learner-1",
-        "language": {"native": "en", "target": "es-MX", "proficiency": "A2"},
+        "language": {"native": "en", "target": {"language": "es-MX", "proficiency": "A2"}},
     }
     learner = Learner.from_dict(data)
     assert learner.prefs is None and learner.features is None
-    assert learner.language.proficiency is Proficiency.A2
+    assert learner.target.proficiency is Proficiency.A2
 
 
 def test_unknown_keys_are_ignored():
@@ -57,7 +58,7 @@ def test_newer_schema_version_is_rejected():
 
 def test_payload_without_target_is_rejected():
     data = _full_learner().to_dict()
-    data["language"] = {"native": "en", "target": None, "proficiency": None}
+    data["language"] = {"native": "en", "target": None}
     with pytest.raises(ValueError):
         Learner.from_dict(data)
 
@@ -77,7 +78,7 @@ def test_store_save_overwrites():
     store = InMemoryLearnerStore()
     store.save(_full_learner())
     updated = Learner(
-        LanguageProfile(native="en", target="es-MX", proficiency=Proficiency.B2), id="learner-1"
+        LanguageProfile(native="en", target=Target("es-MX", Proficiency.B2)), id="learner-1"
     )
     store.save(updated)
     assert store.load("learner-1") == updated

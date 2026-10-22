@@ -19,6 +19,7 @@ from crowspeak_engine import (
     Message,
     Npc,
     Proficiency,
+    Target,
     TranscriptDelta,
     TurnCompleted,
 )
@@ -107,7 +108,7 @@ def configure_learner() -> tuple[Learner, InteractionPrefs]:
     input_side = _prompt_choice("Type your messages in", ["native", "target"], "native")
     response_side = _prompt_choice("Assistant should respond in", ["native", "target"], "target")
 
-    learner = Learner(LanguageProfile(native=native, target=target, proficiency=proficiency))
+    learner = Learner(LanguageProfile(native=native, target=Target(target, proficiency)))
     prefs = InteractionPrefs(
         learner_input_language=native if input_side == "native" else target,
         npc_response_language=native if response_side == "native" else target,
@@ -166,15 +167,15 @@ async def _chat(
     features = Features(corrections=True) if corrections else None
     session = engine.start_session(learner, prefs, features)
     conversation = session.converse(
-        Npc.default(native_language=learner.language.target, persona=persona)
+        Npc.default(native_language=learner.target.language, persona=persona)
     )
     name = conversation.npc.name.lower()
 
     print("\nCrowSpeak chat. Type 'exit' or Ctrl+C to quit.")
     if corrections:
-        if conversation.resolve()[0] != learner.language.target:
+        if conversation.resolve()[0] != learner.target.language:
             print(
-                f"Note: corrections only run when you write in {learner.language.target}; "
+                f"Note: corrections only run when you write in {learner.target.language}; "
                 "none will appear with these settings."
             )
         print("Corrections are on: a one-line summary follows each reply.")

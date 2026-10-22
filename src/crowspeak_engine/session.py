@@ -12,7 +12,7 @@ from .features import Features
 from .llm.providers import Providers
 from .npc import Npc
 from .prefs import InteractionPrefs, resolve_prefs
-from .profile import LanguageProfile
+from .profile import LanguageProfile, Target
 
 SCHEMA_VERSION = 1
 
@@ -30,6 +30,14 @@ class Learner:
     def __post_init__(self) -> None:
         if self.language.target is None:
             raise ValueError("a learner must have a target language")
+
+    @property
+    def target(self) -> Target:
+        """The language being learned. `__post_init__` guarantees there is one."""
+        target = self.language.target
+        if target is None:
+            raise ValueError("a learner must have a target language")
+        return target
 
     def to_dict(self) -> dict:
         return {
@@ -104,7 +112,7 @@ class Session:
         """Get or create the conversation with `npc` (default: a generic partner who
         natively speaks the learner's target language)."""
         if npc is None:
-            npc = Npc.default(native_language=self.learner.language.target)
+            npc = Npc.default(native_language=self.learner.target.language)
         existing = self.conversations.get(npc.id)
         if existing is not None:
             return existing

@@ -59,13 +59,16 @@ def resolve_prefs(
     input_lang = next((p.learner_input_language for p in given if p.learner_input_language), None)
     response_lang = next((p.npc_response_language for p in given if p.npc_response_language), None)
 
+    target = None if learner.target is None else learner.target.language
+    npc_target = None if npc.language.target is None else npc.language.target.language
+
     if input_lang is None:
-        input_lang = _pick([learner.native, learner.target], npc.understands, "input")
+        input_lang = _pick([learner.native, target], npc.understands, "input")
     if response_lang is None:
         # Practice partner speaks the learner's target if they know it.
-        knows_target = learner.target in (npc.language.native, npc.language.target)
+        knows_target = target in (npc.language.native, npc_target)
         response_lang = _pick(
-            [learner.target if knows_target else None, npc.language.native, npc.language.target],
+            [target if knows_target else None, npc.language.native, npc_target],
             npc.speaks,
             "response",
         )

@@ -27,7 +27,7 @@ class GeneratorContext:
 
     @property
     def target_language(self) -> str:
-        return self.learner.language.target  # type: ignore[return-value]  # Learner enforces it
+        return self.learner.target.language
 
     @property
     def native_language(self) -> str:
@@ -35,7 +35,7 @@ class GeneratorContext:
 
     @property
     def proficiency(self) -> Proficiency:
-        return self.learner.language.proficiency  # type: ignore[return-value]
+        return self.learner.target.proficiency
 
 
 class Generator(Protocol[T_co]):

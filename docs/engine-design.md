@@ -59,10 +59,11 @@ The old `session.py` mixed both lifetimes, since it held both the user's config 
 ### `LanguageProfile`: one shape for learner and NPC
 
 ```python
-LanguageProfile(native: str, target: str | None, proficiency: Proficiency | None)
+Target(language: str, proficiency: Proficiency)
+LanguageProfile(native: str, target: Target | None)
 ```
 
-The learner and every NPC use the same shape. A `target` requires a `proficiency`, and `target` must differ from `native`. A learner additionally must have a target (checked in `Learner`). An NPC may have none (a native speaker) or one (a non-native).
+The learner and every NPC use the same shape. The language and its level live in one `Target`, so a target without a level (or the reverse) cannot be built; the only rule left is that `target.language` must differ from `native`. A learner additionally must have a target (checked in `Learner`, which exposes it as the non-optional `Learner.target`). An NPC may have none (a native speaker) or one (a non-native).
 
 This is what makes scenarios like "a non-native, beginner NPC the learner has to catch mistakes from" expressible with no special cases. The plumbing is generic, and only the prompt content for deliberate mistakes is missing (see section 9).
 
@@ -231,7 +232,7 @@ tasks = await engine.generate(DailyTasks(count=5), learner)
 **Prompt budget.** The profile is never sent to the model wholesale. Each consumer takes a small, bounded selection (for example a few wanted words not yet used, preferring those near the learner's level), so token use stays flat as lists grow. A disabled feature costs no prompt tokens. The policy itself is designed in the learner-supplied vocabulary task.
 
 **Serialized form.**
-- `Learner.to_dict()` / `Learner.from_dict()` follow the `Corrections` pattern: additive and tolerant of missing optional keys.
+- `Learner.to_dict()` / `Learner.from_dict()` follow the `Corrections` pattern: additive and tolerant of missing optional keys. The language is `{"native": ..., "target": null | {"language": ..., "proficiency": ...}}`.
 - An integer `schema_version` is written from the start. A payload with a newer version than the engine knows raises a clear error instead of silently dropping data; unknown extra keys within a known version are ignored.
 - The engine still reads no environment or filesystem outside `llm/factory.py`; a `LearnerStore` implementation that does I/O lives in the wrapper.
 

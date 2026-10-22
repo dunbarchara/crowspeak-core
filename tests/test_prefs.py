@@ -6,6 +6,7 @@ from crowspeak_engine import (
     LanguageProfile,
     Npc,
     Proficiency,
+    Target,
 )
 from crowspeak_engine.prefs import resolve_prefs
 
@@ -57,6 +58,6 @@ def test_non_native_beginner_npc_speaks_learners_target(learner):
         id="b",
         name="Bo",
         persona="p",
-        language=LanguageProfile(native="en", target="ja", proficiency=Proficiency.A1),
+        language=LanguageProfile(native="en", target=Target("ja", Proficiency.A1)),
     )
     assert resolve_prefs(learner.language, npc) == ("en", "ja")

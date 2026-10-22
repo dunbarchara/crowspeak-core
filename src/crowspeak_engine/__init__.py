@@ -28,7 +28,7 @@ from .llm.providers import JOB_CORRECTIONS, JOB_NPC, ProviderError, Providers
 from .npc import Npc
 from .prefs import InteractionPrefs
 from .proficiency import Proficiency
-from .profile import LanguageProfile
+from .profile import LanguageProfile, Target
 from .session import Learner, Session
 
 __all__ = [
@@ -73,6 +73,7 @@ __all__ = [
     "Role",
     "Session",
     "SessionStarted",
+    "Target",
     "TranscriptDelta",
     "TurnCompleted",
     "UnsupportedSchemaVersion",

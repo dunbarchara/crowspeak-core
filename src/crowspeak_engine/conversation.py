@@ -117,8 +117,7 @@ class Conversation:
         """The analyzer to run on a learner message this turn, or None if not applicable."""
         if not self.resolved_features().corrections:
             return None
-        learner = self.session.learner.language
-        if self.resolve()[0] != learner.target:
+        if self.resolve()[0] != self.session.learner.target.language:
             return None  # the learner isn't expected to write in their target language
         # Raises ProviderError (a ValueError) if the job's provider can't return JSON.
         return CorrectionsAnalyzer(self._providers.for_job(CorrectionsAnalyzer.name, "json"))
@@ -132,7 +131,7 @@ class Conversation:
     def _start_analysis(
         self, analyzer: CorrectionsAnalyzer, message: Message, earlier: list[Message]
     ) -> asyncio.Task:
-        learner = self.session.learner.language
+        learner = self.session.learner
         turns: tuple[Turn, ...] = tuple(
             ("LEARNER" if m.role == "user" else "NPC", m.content)
             for m in earlier[-ANALYZER_HISTORY:]
@@ -141,9 +140,9 @@ class Conversation:
         context = AnalyzerContext(
             text=message.content,
             history=turns,
-            target_language=learner.target,
-            native_language=learner.native,
-            proficiency=learner.proficiency,
+            target_language=learner.target.language,
+            native_language=learner.language.native,
+            proficiency=learner.target.proficiency,
         )
 
         async def run() -> Corrections:
