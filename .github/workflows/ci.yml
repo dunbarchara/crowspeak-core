@@ -54,6 +54,30 @@ jobs:
       - run: uv sync --frozen --group dev --group cli
       - run: uv run pip-audit
 
+  # ─── build ────────────────────────────────────────────────────────────────
+  # Builds what we would publish and proves it installs and imports on its own.
+  # No upload happens here; see release.yml.
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv build
+      - run: uvx twine==7.0.0 check --strict dist/*
+      - run: python scripts/check_dist.py dist
+      # Install the wheel into a fresh venv and import it from outside the repo, so the
+      # src/ layout can't mask a missing file.
+      - run: |
+          uv venv "$RUNNER_TEMP/smoke" --python "${{ matrix.python-version }}"
+          uv pip install --python "$RUNNER_TEMP/smoke" dist/*.whl
+          cd "$RUNNER_TEMP"
+          smoke/bin/python -c "import crowspeak_engine as e; print(e.__version__, e.__file__)"
+
   # ─── PLACEHOLDER: container scan ──────────────────────────────────────────
   # Enable when a Dockerfile exists. Scan BEFORE any push.
   # container:
