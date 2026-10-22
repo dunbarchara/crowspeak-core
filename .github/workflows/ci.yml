@@ -39,6 +39,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --frozen --group dev --group cli
       - run: uv run ruff check .
+      # The wheel ships py.typed, so the engine's annotations must hold.
+      - run: uv run mypy
       # SAST (Python)
       - run: uv run bandit -r src -ll -q
       - run: uv run pytest

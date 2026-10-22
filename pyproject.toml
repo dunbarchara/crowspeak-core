@@ -35,7 +35,14 @@ crowspeak_engine = ["py.typed"]
 [dependency-groups]
 cli = ["python-dotenv>=1.0.0"]
 tui = ["textual>=0.80", "python-dotenv>=1.0.0"]
-dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.16", "bandit[toml]>=1.8", "pip-audit>=2.9"]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.16",
+    "bandit[toml]>=1.8",
+    "pip-audit>=2.9",
+    "mypy>=2.4.0",
+]
 
 # The published wheel is the engine only; crowspeak_cli and crowspeak_tui live in the repo.
 [tool.setuptools.packages.find]
@@ -50,6 +57,12 @@ exclude = [".venv", "__pycache__"]
 [tool.ruff.lint]
 select = ["E", "W", "F", "I"]
 ignore = ["E501"]  # line length handled by the formatter
+
+[tool.mypy]
+files = ["src/crowspeak_engine"]  # the typed, published package; the CLI is not checked
+python_version = "3.10"
+warn_unused_ignores = true
+warn_return_any = true
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]
