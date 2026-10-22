@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 # Closed vocabularies, like EXPRESSIONS: the analyzer's JSON schema is built from these
 # and anything else it returns is rejected.
-CATEGORIES = ("grammar", "vocabulary", "spelling", "naturalness", "punctuation")
+CATEGORIES = ("grammar", "vocabulary", "spelling", "naturalness", "punctuation", "accents")
 SEVERITIES = ("error", "suggestion")
 
 
@@ -56,8 +56,11 @@ class Corrections:
     original: str
     corrected: str
     is_correct: bool
+    # What to show first (capped by level), then everything else: minor fixes such as accents
+    # and punctuation at low levels, and anything over the cap. `corrected` accounts for both.
     items: tuple[CorrectionItem, ...] = ()
     praise: str | None = None
+    more: tuple[CorrectionItem, ...] = ()
 
     def to_dict(self) -> dict:
         return {
@@ -67,6 +70,7 @@ class Corrections:
             "is_correct": self.is_correct,
             "items": [i.to_dict() for i in self.items],
             "praise": self.praise,
+            "more": [i.to_dict() for i in self.more],
         }
 
     @classmethod
@@ -78,4 +82,5 @@ class Corrections:
             is_correct=data["is_correct"],
             items=tuple(CorrectionItem.from_dict(i) for i in data.get("items", [])),
             praise=data.get("praise"),
+            more=tuple(CorrectionItem.from_dict(i) for i in data.get("more", [])),
         )

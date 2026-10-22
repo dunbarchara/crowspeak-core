@@ -61,11 +61,12 @@ def test_factory_selects_local(monkeypatch):
     assert str(provider._client.base_url).rstrip("/") == DEFAULT_BASE_URL
 
 
-def test_local_from_env_overrides(monkeypatch):
+def test_local_env_overrides(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER", "local")
     monkeypatch.setenv("LOCAL_LLM_BASE_URL", "http://host:1234/v1")
     monkeypatch.setenv("LOCAL_LLM_MODEL", "qwen2.5")
 
-    provider = LocalOpenAIProvider.from_env()
+    provider = provider_from_env()
 
     assert provider._model == "qwen2.5"
     assert str(provider._client.base_url).rstrip("/") == "http://host:1234/v1"

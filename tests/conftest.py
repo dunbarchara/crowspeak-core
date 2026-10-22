@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from crowspeak_engine import Engine, LanguageProfile, Learner, Proficiency
+from crowspeak_engine import Engine, LanguageProfile, Learner, Proficiency, Target
 
 
 class FakeLLM:
@@ -27,7 +27,7 @@ def llm():
 
 @pytest.fixture
 def learner():
-    return Learner(LanguageProfile(native="en", target="ja", proficiency=Proficiency.A2))
+    return Learner(LanguageProfile(native="en", target=Target("ja", Proficiency.A2)))
 
 
 @pytest.fixture
@@ -87,4 +87,4 @@ SPANISH_TEXT = "Ayer yo fui al mercado y compré unos manzana."
 
 @pytest.fixture
 def es_learner():
-    return Learner(LanguageProfile(native="en", target="es-MX", proficiency=Proficiency.A2))
+    return Learner(LanguageProfile(native="en", target=Target("es-MX", Proficiency.A2)))

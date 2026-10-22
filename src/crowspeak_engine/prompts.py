@@ -22,7 +22,7 @@ _CONDUCT = (
 def _describe(name: str, p: LanguageProfile) -> str:
     text = f"{name} natively speaks {p.native}"
     if p.target:
-        text += f" and speaks {p.target} at CEFR level {p.proficiency.value}"
+        text += f" and speaks {p.target.language} at CEFR level {p.target.proficiency.value}"
     return text + "."
 
 
@@ -45,11 +45,11 @@ def build_system_prompt(
     # Calibrate to whoever's level matters for the language being spoken: an Npc
     # speaking its own non-native target talks at its own level; otherwise pitch
     # to the learner's level in that language.
-    npc_lang = npc.language
-    if response_language == npc_lang.target:
-        parts.append(get_adapter(response_language, npc_lang.proficiency))
-    elif response_language == learner.target:
-        parts.append(get_adapter(response_language, learner.proficiency))
+    npc_target = npc.language.target
+    if npc_target is not None and response_language == npc_target.language:
+        parts.append(get_adapter(response_language, npc_target.proficiency))
+    elif learner.target is not None and response_language == learner.target.language:
+        parts.append(get_adapter(response_language, learner.target.proficiency))
 
     if npc.understands is not None:
         parts.append(

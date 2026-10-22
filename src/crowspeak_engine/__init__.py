@@ -1,11 +1,12 @@
 """CrowSpeak conversation engine: UI-agnostic; takes input, yields events."""
 
+from ._version import __version__
 from .analyzers import AnalysisError, Analyzer, AnalyzerContext, CorrectionsAnalyzer
 from .conversation import Conversation
 from .conversation_types import Message, Role
 from .corrections import CATEGORIES, SEVERITIES, CorrectionItem, Corrections
 from .engine import Engine
-from .errors import ConstraintError
+from .errors import ConstraintError, UnsupportedSchemaVersion
 from .events import (
     AnalyzerError,
     ConversationEvent,
@@ -19,14 +20,19 @@ from .events import (
 )
 from .expression import EXPRESSIONS
 from .features import Features
+from .generators import GenerationError, Generator, GeneratorContext
+from .learner_store import InMemoryLearnerStore, LearnerStore
 from .llm.base import JSONProvider, LLMProvider
+from .llm.factory import ProviderConfig, build_provider, providers_from_config
+from .llm.providers import JOB_CORRECTIONS, JOB_NPC, ProviderError, Providers
 from .npc import Npc
 from .prefs import InteractionPrefs
 from .proficiency import Proficiency
-from .profile import LanguageProfile
+from .profile import LanguageProfile, Target
 from .session import Learner, Session
 
 __all__ = [
+    "__version__",
     "AnalysisError",
     "Analyzer",
     "AnalyzerContext",
@@ -36,7 +42,12 @@ __all__ = [
     "Corrections",
     "CorrectionsAnalyzer",
     "CorrectionsReady",
+    "JOB_CORRECTIONS",
+    "JOB_NPC",
     "JSONProvider",
+    "ProviderError",
+    "ProviderConfig",
+    "Providers",
     "SEVERITIES",
     "ConstraintError",
     "Conversation",
@@ -47,16 +58,25 @@ __all__ = [
     "Event",
     "ExpressionChange",
     "Features",
+    "GenerationError",
+    "Generator",
+    "GeneratorContext",
+    "InMemoryLearnerStore",
     "InteractionPrefs",
     "LLMProvider",
     "LanguageProfile",
     "Learner",
+    "LearnerStore",
     "Message",
     "Npc",
     "Proficiency",
     "Role",
     "Session",
     "SessionStarted",
+    "Target",
     "TranscriptDelta",
     "TurnCompleted",
+    "UnsupportedSchemaVersion",
+    "build_provider",
+    "providers_from_config",
 ]

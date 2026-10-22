@@ -6,8 +6,6 @@ import os
 import sys
 from pathlib import Path
 
-from dotenv import load_dotenv
-
 from crowspeak_cli import render
 from crowspeak_engine import (
     AnalyzerError,
@@ -21,10 +19,54 @@ from crowspeak_engine import (
     Message,
     Npc,
     Proficiency,
+    Target,
     TranscriptDelta,
     TurnCompleted,
 )
-from crowspeak_engine.llm import provider_from_env
+from crowspeak_engine.llm import JOB_CORRECTIONS, JOB_NPC, Providers, providers_from_env
+
+
+def _load_env() -> None:
+    """Load `.env` into the environment (the engine never does). Needs the `cli` dependency group."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        print(
+            "crowspeak-cli: python-dotenv is not installed. "
+            "Install the CLI dependencies: uv sync --group cli",
+            file=sys.stderr,
+        )
+        raise SystemExit(1) from None
+    load_dotenv()
+
+
+def _describe(provider: object) -> str:
+    describe = getattr(provider, "describe", None)
+    return describe() if callable(describe) else repr(provider)
+
+
+def _provider_lines(providers: Providers, corrections: bool) -> list[str]:
+    """What serves each built-in job: the default, or the job's own provider."""
+    lines = [f"default: {_describe(providers.default)}"]
+    for job in (JOB_NPC, JOB_CORRECTIONS):
+        own = providers.jobs.get(job)
+        text = _describe(own) if own is not None else "(default)"
+        if job == JOB_CORRECTIONS and not corrections:
+            text += " (unused: --corrections is off)"
+        lines.append(f"{job}: {text}")
+    return lines
+
+
+def _debug_env() -> str:
+    """The provider-selecting variables as the process sees them (shell beats .env)."""
+    names = sorted(
+        n
+        for n in os.environ
+        if n == "LLM_PROVIDER" or n.startswith(("LLM_NPC_", "LLM_CORRECTIONS_"))
+    )
+    # Secrets are reported as set or not, never printed.
+    shown = ((n, "(set)" if n.endswith("_API_KEY") else os.environ[n]) for n in names)
+    return " ".join(f"{n}={v}" for n, v in shown) or "(none set; defaults apply)"
 
 
 def _prompt(label: str, default: str) -> str:
@@ -66,7 +108,7 @@ def configure_learner() -> tuple[Learner, InteractionPrefs]:
     input_side = _prompt_choice("Type your messages in", ["native", "target"], "native")
     response_side = _prompt_choice("Assistant should respond in", ["native", "target"], "target")
 
-    learner = Learner(LanguageProfile(native=native, target=target, proficiency=proficiency))
+    learner = Learner(LanguageProfile(native=native, target=Target(target, proficiency)))
     prefs = InteractionPrefs(
         learner_input_language=native if input_side == "native" else target,
         npc_response_language=native if response_side == "native" else target,
@@ -86,8 +128,9 @@ def _use_color(stream) -> bool:
     return stream.isatty() and not os.environ.get("NO_COLOR")
 
 
-def _review(history: list[Message], arg: str, color: bool) -> str:
-    """Corrections for the learner's last message, or the Nth (1-based) with `/review N`."""
+def _review(history: list[Message], arg: str, color: bool, more: bool = False) -> str:
+    """Corrections for the learner's last message, or the Nth (1-based) with `/review N`.
+    With `more`, the folded ones (`/review-more`): minor fixes and anything over the cap."""
     learner_messages = [m for m in history if m.role == "user"]
     if not learner_messages:
         return "Nothing to review yet."
@@ -95,7 +138,7 @@ def _review(history: list[Message], arg: str, color: bool) -> str:
         try:
             index = int(arg)
         except ValueError:
-            return "Usage: /review [N]"
+            return f"Usage: {'/review-more' if more else '/review'} [N]"
         if not 1 <= index <= len(learner_messages):
             return f"No message {index}; you have written {len(learner_messages)}."
     else:
@@ -106,7 +149,11 @@ def _review(history: list[Message], arg: str, color: bool) -> str:
             f"Message {index} was not analyzed "
             "(corrections need --corrections and a message in your target language)."
         )
-    return render.format_corrections(message.corrections, color)
+    if more:
+        return render.format_more(message.corrections, color)
+    out = render.format_corrections(message.corrections, color)
+    hint = render.format_more_hint(message.corrections, index, color)
+    return f"{out}\n{hint}" if hint else out
 
 
 async def _chat(
@@ -120,19 +167,20 @@ async def _chat(
     features = Features(corrections=True) if corrections else None
     session = engine.start_session(learner, prefs, features)
     conversation = session.converse(
-        Npc.default(native_language=learner.language.target, persona=persona)
+        Npc.default(native_language=learner.target.language, persona=persona)
     )
     name = conversation.npc.name.lower()
 
     print("\nCrowSpeak chat. Type 'exit' or Ctrl+C to quit.")
     if corrections:
-        if conversation.resolve()[0] != learner.language.target:
+        if conversation.resolve()[0] != learner.target.language:
             print(
-                f"Note: corrections only run when you write in {learner.language.target}; "
+                f"Note: corrections only run when you write in {learner.target.language}; "
                 "none will appear with these settings."
             )
         print("Corrections are on: a one-line summary follows each reply.")
-        print("Type /review [N] for the details of your last (or Nth) message.")
+        print("Type /review [N] for the details of your last (or Nth) message,")
+        print("and /review-more [N] for the minor fixes (accents, punctuation) folded out of it.")
     print()
 
     while True:
@@ -147,8 +195,9 @@ async def _chat(
         if user_input.lower() in ("exit", "quit"):
             return
         command, _, arg = user_input.partition(" ")
-        if command.lower() == "/review":
-            print(_review(conversation.history, arg.strip(), color), "\n")
+        if command.lower() in ("/review", "/review-more"):
+            more = command.lower() == "/review-more"
+            print(_review(conversation.history, arg.strip(), color, more), "\n")
             continue
 
         line_open = False  # True while the NPC's reply is mid-line
@@ -191,23 +240,28 @@ def main() -> None:
         help="Show feedback on your messages after each reply (needs a JSON-capable LLM)",
     )
     parser.add_argument(
-        "--debug", action="store_true", help="Print which LLM provider/model is in use"
+        "--debug", action="store_true", help="Print which LLM provider/model serves each job"
     )
     args = parser.parse_args()
 
-    load_dotenv()
+    _load_env()
     # Windows terminals default to a codepage (e.g. cp1252) that can't print
     # Japanese or other non-Latin scripts; force UTF-8 so target-language output
     # doesn't crash the loop.
     sys.stdout.reconfigure(encoding="utf-8")
 
     persona = _load_persona(args.persona)
-    llm = provider_from_env()
+    try:
+        providers = providers_from_env()
+    except ValueError as e:  # unknown provider kind, or missing Azure variables
+        print(f"crowspeak-cli: {e}", file=sys.stderr)
+        raise SystemExit(1) from None
     if args.debug:
-        # load_dotenv() does not override variables already set in the shell.
-        print(f"[debug] LLM_PROVIDER={os.environ.get('LLM_PROVIDER', 'azure')}", file=sys.stderr)
-        print(f"[debug] {getattr(llm, 'describe', lambda: repr(llm))()}", file=sys.stderr)
-    engine = Engine(llm)
+        # .env does not override variables already set in the shell.
+        print(f"[debug] env: {_debug_env()}", file=sys.stderr)
+        for line in _provider_lines(providers, args.corrections):
+            print(f"[debug] {line}", file=sys.stderr)
+    engine = Engine(providers=providers)
     learner, prefs = configure_learner()
     try:
         asyncio.run(

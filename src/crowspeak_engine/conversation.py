@@ -21,7 +21,7 @@ from .events import (
 )
 from .expression import DEFAULT_EXPRESSION, EXPRESSIONS, Expression, ExpressionTagParser
 from .features import Features, ResolvedFeatures, resolve_features
-from .llm.base import LLMProvider
+from .llm.providers import JOB_NPC, Providers
 from .npc import Npc
 from .prefs import InteractionPrefs, resolve_prefs
 from .prompts import build_system_prompt
@@ -41,19 +41,18 @@ class Conversation:
         self,
         session: Session,
         npc: Npc,
-        llm: LLMProvider,
+        providers: Providers,
         prefs: InteractionPrefs | None = None,
         features: Features | None = None,
-        analyzer_llm: LLMProvider | None = None,
     ) -> None:
         self.conversation_id = str(uuid.uuid4())
         self.session = session
         self.npc = npc
         self.history: list[Message] = []
-        self._llm = llm
+        self._providers = providers
+        self._llm = providers.for_job(JOB_NPC, "stream")  # fail at converse(), not mid-turn
         self._prefs = prefs
         self._features = features
-        self._analyzer_llm = analyzer_llm or llm
         self._analysis_tasks: set[asyncio.Task] = set()  # keeps tasks alive until done
         self.resolve()  # fail fast on constraint violations
 
@@ -62,7 +61,8 @@ class Conversation:
         return self._prefs
 
     def set_prefs(self, prefs: InteractionPrefs | None) -> None:
-        resolve_prefs(self.session.learner.language, self.npc, prefs, self.session.prefs)
+        learner = self.session.learner
+        resolve_prefs(learner.language, self.npc, prefs, self.session.prefs, learner.prefs)
         self._prefs = prefs
 
     @property
@@ -74,12 +74,15 @@ class Conversation:
         self._features = features
 
     def resolved_features(self) -> ResolvedFeatures:
-        return resolve_features(self._features, self.session.features)
+        return resolve_features(
+            self._features, self.session.features, self.session.learner.features
+        )
 
     def resolve(self) -> tuple[str, str]:
         """The (input_language, response_language) currently in effect."""
+        learner = self.session.learner
         return resolve_prefs(
-            self.session.learner.language, self.npc, self._prefs, self.session.prefs
+            learner.language, self.npc, self._prefs, self.session.prefs, learner.prefs
         )
 
     def system_prompt(self) -> str:
@@ -114,15 +117,10 @@ class Conversation:
         """The analyzer to run on a learner message this turn, or None if not applicable."""
         if not self.resolved_features().corrections:
             return None
-        learner = self.session.learner.language
-        if self.resolve()[0] != learner.target:
+        if self.resolve()[0] != self.session.learner.target.language:
             return None  # the learner isn't expected to write in their target language
-        if not hasattr(self._analyzer_llm, "complete_json"):
-            raise ValueError(
-                "Features.corrections needs an analyzer LLM with complete_json() "
-                "(pass analyzer_llm= to Engine)"
-            )
-        return CorrectionsAnalyzer(self._analyzer_llm)
+        # Raises ProviderError (a ValueError) if the job's provider can't return JSON.
+        return CorrectionsAnalyzer(self._providers.for_job(CorrectionsAnalyzer.name, "json"))
 
     def _attach_corrections(self, message_id: str, corrections: Corrections) -> None:
         for i, m in enumerate(self.history):
@@ -133,7 +131,7 @@ class Conversation:
     def _start_analysis(
         self, analyzer: CorrectionsAnalyzer, message: Message, earlier: list[Message]
     ) -> asyncio.Task:
-        learner = self.session.learner.language
+        learner = self.session.learner
         turns: tuple[Turn, ...] = tuple(
             ("LEARNER" if m.role == "user" else "NPC", m.content)
             for m in earlier[-ANALYZER_HISTORY:]
@@ -142,9 +140,9 @@ class Conversation:
         context = AnalyzerContext(
             text=message.content,
             history=turns,
-            target_language=learner.target,
-            native_language=learner.native,
-            proficiency=learner.proficiency,
+            target_language=learner.target.language,
+            native_language=learner.language.native,
+            proficiency=learner.target.proficiency,
         )
 
         async def run() -> Corrections:
@@ -237,7 +235,7 @@ class Conversation:
         yield TranscriptDelta(text="", role="assistant", final=True, **ids)
         yield TurnCompleted(message=message, **ids)
 
-        if analysis is not None:
+        if analyzer is not None and analysis is not None:
             user_ids = self._ids("user")
             try:
                 # Shielded so a consumer that leaves here doesn't cancel the analysis.

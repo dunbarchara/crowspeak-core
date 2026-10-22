@@ -5,6 +5,7 @@ from crowspeak_engine import (
     LanguageProfile,
     Npc,
     Proficiency,
+    Target,
 )
 from crowspeak_engine.proficiency_adapters import get_adapter
 
@@ -20,7 +21,7 @@ def test_beginner_non_native_npc_calibrates_to_npc(session):
         id="b",
         name="Bo",
         persona="I am Bo.",
-        language=LanguageProfile(native="en", target="ja", proficiency=Proficiency.A1),
+        language=LanguageProfile(native="en", target=Target("ja", Proficiency.A1)),
     )
     prompt = session.converse(npc).system_prompt()
     assert prompt.startswith("I am Bo.")
