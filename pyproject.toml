@@ -25,17 +25,16 @@ classifiers = [
 ]
 dependencies = ["openai>=1.50.0"]
 
-[project.optional-dependencies]
+# Dev-only (PEP 735): not part of the published metadata. Install with `uv sync --group <name>`.
+[dependency-groups]
 cli = ["python-dotenv>=1.0.0"]
 tui = ["textual>=0.80", "python-dotenv>=1.0.0"]
 dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.16", "bandit[toml]>=1.8", "pip-audit>=2.9"]
 
-[project.scripts]
-crowspeak-cli = "crowspeak_cli.cli:main"
-
+# The published wheel is the engine only; crowspeak_cli and crowspeak_tui live in the repo.
 [tool.setuptools.packages.find]
 where = ["src"]
-exclude = ["crowspeak_tui*"]
+include = ["crowspeak_engine*"]
 
 [tool.ruff]
 line-length = 100
@@ -51,6 +50,7 @@ exclude_dirs = ["tests", ".venv"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]  # tests also import crowspeak_cli, which is not in the wheel
 asyncio_mode = "auto"
 markers = ["live: hits the real Azure Foundry endpoint (costs money); opt-in via -m live"]
 addopts = "-m 'not live'"

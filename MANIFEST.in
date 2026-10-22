@@ -1,1 +1,2 @@
 prune src/crowspeak_tui
+prune src/crowspeak_cli

@@ -8,15 +8,16 @@ See [docs/engine-design.md](docs/engine-design.md) for the design.
 
 ```
 pip install crowspeak-engine
-pip install "crowspeak-engine[cli]"   # adds the reference CLI dependencies
 ```
 
 Requires Python 3.10 or newer.
 
 ## Reference CLI
 
+The CLI lives in this repo and is not part of the published package:
+
 ```
-crowspeak-cli
+uv run --group cli python -m crowspeak_cli
 ```
 
 Configure a provider with environment variables; see `.env.example`. The default provider
@@ -26,8 +27,8 @@ Ollama also works (`LLM_PROVIDER=local`).
 ## Development
 
 ```
-uv sync --extra cli --extra dev
-uv run --extra cli --extra dev pytest
+uv sync --group cli --group dev
+uv run --group cli --group dev pytest
 ```
 
 Tests do not touch the network by default. See [AGENTS.md](AGENTS.md) for the testing policy.

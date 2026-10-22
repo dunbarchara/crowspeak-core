@@ -83,4 +83,4 @@ def test_missing_dotenv_exits_with_the_install_command(monkeypatch, capsys):
         _load_env()
 
     assert e.value.code == 1
-    assert "uv sync --extra cli" in capsys.readouterr().err
+    assert "uv sync --group cli" in capsys.readouterr().err

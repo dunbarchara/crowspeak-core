@@ -16,7 +16,7 @@ endif
 .PHONY: install check check-pre-commit check-python
 
 install:
-	uv sync --frozen --extra dev --extra cli
+	uv sync --frozen --group dev --group cli
 	pre-commit install
 
 check: check-pre-commit check-python

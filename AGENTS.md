@@ -4,7 +4,7 @@ Python engine (`crowspeak_engine`), reference CLI (`crowspeak_cli`) and design d
 
 ## Setup
 
-`uv sync` alone installs only the engine's base dependency (`openai`) and removes anything else, so name the extras you need: `uv sync --extra cli --extra dev` (what CI uses), plus `--extra tui` for the TUI. `python-dotenv` is in `cli`; `pytest`, `ruff` and `bandit` are in `dev`. A later plain `uv sync` or `uv run` re-syncs without extras, so pass `--extra` to `uv run` too (for example `uv run --extra cli crowspeak-cli`).
+`uv sync` alone installs only the engine's base dependency (`openai`) and removes anything else, so name the dependency groups you need: `uv sync --group cli --group dev` (what CI uses), plus `--group tui` for the TUI. These are PEP 735 groups, not published extras. `python-dotenv` is in `cli`; `pytest`, `ruff` and `bandit` are in `dev`. A later plain `uv sync` or `uv run` re-syncs without them, so pass `--group` to `uv run` too (for example `uv run --group cli python -m crowspeak_cli`). The CLI is not part of the published wheel, so there is no `crowspeak-cli` command.
 
 ## Testing policy
 

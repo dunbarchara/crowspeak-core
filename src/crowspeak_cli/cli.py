@@ -26,13 +26,13 @@ from crowspeak_engine.llm import JOB_CORRECTIONS, JOB_NPC, Providers, providers_
 
 
 def _load_env() -> None:
-    """Load `.env` into the environment (the engine never does). Needs the `cli` extra."""
+    """Load `.env` into the environment (the engine never does). Needs the `cli` dependency group."""
     try:
         from dotenv import load_dotenv
     except ImportError:
         print(
             "crowspeak-cli: python-dotenv is not installed. "
-            "Install the CLI extras: uv sync --extra cli",
+            "Install the CLI dependencies: uv sync --group cli",
             file=sys.stderr,
         )
         raise SystemExit(1) from None

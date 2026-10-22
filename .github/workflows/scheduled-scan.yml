@@ -21,5 +21,5 @@ jobs:
       # Full-history gitleaks scan (the pre-commit hook only scans staged changes).
       # Keep the image tag in step with the gitleaks rev in .pre-commit-config.yaml.
       - run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1 git /repo --no-banner
-      - run: uv sync --frozen --extra dev --extra cli
+      - run: uv sync --frozen --group dev --group cli
       - run: uv run pip-audit
