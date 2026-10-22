@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "crowspeak-engine"
-version = "0.1.0"
+dynamic = ["version"]
 description = "UI-agnostic conversation engine for CrowSpeak language practice."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -24,6 +24,12 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 dependencies = ["openai>=1.50.0"]
+
+[tool.setuptools.dynamic]
+version = { attr = "crowspeak_engine._version.__version__" }
+
+[tool.setuptools.package-data]
+crowspeak_engine = ["py.typed"]
 
 # Dev-only (PEP 735): not part of the published metadata. Install with `uv sync --group <name>`.
 [dependency-groups]

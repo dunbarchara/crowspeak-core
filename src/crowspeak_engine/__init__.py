@@ -1,5 +1,6 @@
 """CrowSpeak conversation engine: UI-agnostic; takes input, yields events."""
 
+from ._version import __version__
 from .analyzers import AnalysisError, Analyzer, AnalyzerContext, CorrectionsAnalyzer
 from .conversation import Conversation
 from .conversation_types import Message, Role
@@ -30,6 +31,7 @@ from .profile import LanguageProfile
 from .session import Learner, Session
 
 __all__ = [
+    "__version__",
     "AnalysisError",
     "Analyzer",
     "AnalyzerContext",
