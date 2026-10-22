@@ -23,6 +23,7 @@ from .features import Features
 from .generators import GenerationError, Generator, GeneratorContext
 from .learner_store import InMemoryLearnerStore, LearnerStore
 from .llm.base import JSONProvider, LLMProvider
+from .llm.factory import ProviderConfig, build_provider, providers_from_config
 from .llm.providers import JOB_CORRECTIONS, JOB_NPC, ProviderError, Providers
 from .npc import Npc
 from .prefs import InteractionPrefs
@@ -45,6 +46,7 @@ __all__ = [
     "JOB_NPC",
     "JSONProvider",
     "ProviderError",
+    "ProviderConfig",
     "Providers",
     "SEVERITIES",
     "ConstraintError",
@@ -74,4 +76,6 @@ __all__ = [
     "TranscriptDelta",
     "TurnCompleted",
     "UnsupportedSchemaVersion",
+    "build_provider",
+    "providers_from_config",
 ]

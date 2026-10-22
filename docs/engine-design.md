@@ -262,6 +262,15 @@ tests/
 
 Package naming: import `crowspeak_engine`, PyPI `crowspeak-engine`, CLI `crowspeak-cli`. `crowspeak-core` remains the **repo** name only, since the repo contains the engine, gateway, CLI and protocol schemas. Naming the package after the repo would blur that boundary and force a rename when the gateway arrives.
 
+### Public API and stability
+
+The public API is the names in `crowspeak_engine.__all__` and `crowspeak_engine.llm.__all__`. Everything else, including underscore-prefixed modules such as `llm/_openai_stream.py` and any name imported from a submodule path, is internal and may change without notice.
+
+- Explicit provider config is the primary way in: `ProviderConfig`, `build_provider` and `providers_from_config` are importable from `crowspeak_engine`, and the adapters (`AzureOpenAIProvider`, `LocalOpenAIProvider`) from `crowspeak_engine.llm`.
+- `providers_from_env` and `provider_from_env` live in `crowspeak_engine.llm` only. They are conveniences for the CLI, tests and local development, not part of the top-level API.
+- While the version is 0.x, a minor release may break the public API; patch releases do not. From 1.0 the usual semantic-versioning rules apply.
+- The version is `crowspeak_engine.__version__`, read from `_version.py`; a release tag must equal it.
+
 ## 10. Alternatives we rejected
 
 | Rejected | Why |
