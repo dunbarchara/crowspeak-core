@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Literal, Mapping
+from typing import Literal, Mapping, overload
 
-from .base import LLMProvider
+from .base import JSONProvider, LLMProvider
 
 JOB_NPC = "npc"
 JOB_CORRECTIONS = "corrections"
@@ -39,10 +39,17 @@ class Providers:
         # A read-only copy, so changing the caller's dict later can't change the registry.
         object.__setattr__(self, "jobs", MappingProxyType(dict(self.jobs)))
 
-    def for_job(self, name: str, needs: Needs = "stream") -> LLMProvider:
+    @overload
+    def for_job(self, name: str, needs: Literal["stream"] = "stream") -> LLMProvider: ...
+
+    @overload
+    def for_job(self, name: str, needs: Literal["json"]) -> JSONProvider: ...
+
+    def for_job(self, name: str, needs: Needs = "stream") -> LLMProvider | JSONProvider:
         """The provider for job `name`: its own if assigned, else the default.
 
-        Raises ProviderError if that provider lacks the capability the job needs.
+        Raises ProviderError if that provider lacks the capability the job needs; the
+        overloads tell type checkers what `needs` guarantees.
         """
         provider = self.jobs.get(name, self.default)
         method = _METHOD[needs]

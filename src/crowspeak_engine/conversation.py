@@ -236,7 +236,7 @@ class Conversation:
         yield TranscriptDelta(text="", role="assistant", final=True, **ids)
         yield TurnCompleted(message=message, **ids)
 
-        if analysis is not None:
+        if analyzer is not None and analysis is not None:
             user_ids = self._ids("user")
             try:
                 # Shielded so a consumer that leaves here doesn't cancel the analysis.
