@@ -7,6 +7,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+import crowspeak_engine
 from crowspeak_cli import render
 from crowspeak_cli.store import DEFAULT_PROFILE_PATH, JsonFileLearnerStore, ProfileFileError
 from crowspeak_engine import (
@@ -286,6 +287,11 @@ def main() -> None:
         print(f"crowspeak-cli: {e}", file=sys.stderr)
         raise SystemExit(1) from None
     if args.debug:
+        # Which engine this run uses: site-packages (installed) or src/ (dev).
+        print(
+            f"[debug] engine: {crowspeak_engine.__version__} at {crowspeak_engine.__file__}",
+            file=sys.stderr,
+        )
         # .env does not override variables already set in the shell.
         print(f"[debug] env: {_debug_env()}", file=sys.stderr)
         for line in _provider_lines(providers, args.corrections):

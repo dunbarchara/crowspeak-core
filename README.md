@@ -14,11 +14,20 @@ Requires Python 3.10 or newer.
 
 ## Reference CLI
 
-The CLI lives in this repo and is not part of the published package:
+The CLI lives in this repo and is not part of the published package. It runs two ways:
 
 ```
-uv run --group cli python -m crowspeak_cli
+make cli ARGS="--debug"       # against the engine built as a wheel: what a consumer installs
+make cli-dev ARGS="--debug"   # against the engine source in src/: for iterating on the engine
+make cli-testpypi VERSION=0.1.0   # against a build published to TestPyPI
 ```
+
+`--debug` prints which engine is in use (a `site-packages` path, or this repo's `src/`).
+Installed mode builds a throwaway venv on every run, so it takes a few seconds longer.
+
+The first run asks a few setup questions and saves them to `src/crowspeak_cli/learner.json`
+(gitignored, plain JSON you can read and edit). Later runs load it. Use `--reset` to run setup
+again and `--profile PATH` to use another file.
 
 Configure a provider with environment variables; see `.env.example`. The default provider
 is Azure AI Foundry using your own endpoint and key. A local OpenAI-compatible server such as
