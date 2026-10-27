@@ -303,6 +303,9 @@ def main() -> None:
     except ProfileFileError as e:
         print(f"crowspeak-cli: {e}", file=sys.stderr)
         raise SystemExit(1) from None
+    except (KeyboardInterrupt, EOFError):
+        print("\nbye")
+        return
     if loaded:
         target = learner.target
         print(

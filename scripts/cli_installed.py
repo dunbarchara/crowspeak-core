@@ -103,10 +103,15 @@ def main() -> int:
             print(f"cli_installed: engine from local wheel {wheel.name}", file=sys.stderr)
 
         # cwd stays at the repo root so the CLI finds .env the way it does in dev.
-        result = subprocess.run(
+        proc = subprocess.Popen(
             [python, "-I", "-c", BOOTSTRAP, str(CLI_PACKAGE), *cli_args], cwd=ROOT
         )
-        return result.returncode
+        while True:
+            try:
+                return proc.wait()
+            except KeyboardInterrupt:
+                # Ctrl+C reaches the CLI too; let it print its own goodbye and exit.
+                continue
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
