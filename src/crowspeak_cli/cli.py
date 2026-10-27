@@ -4,9 +4,12 @@ import argparse
 import asyncio
 import os
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
+import crowspeak_engine
 from crowspeak_cli import render
+from crowspeak_cli.store import DEFAULT_PROFILE_PATH, JsonFileLearnerStore, ProfileFileError
 from crowspeak_engine import (
     AnalyzerError,
     CorrectionsReady,
@@ -96,7 +99,7 @@ def _prompt_proficiency(default: Proficiency = Proficiency.A1) -> Proficiency:
             print(f"Please enter one of: {', '.join(levels)}")
 
 
-def configure_learner() -> tuple[Learner, InteractionPrefs]:
+def configure_learner() -> Learner:
     print("Let's set up your practice session.\n")
     while True:
         native = _prompt("Your native language (ISO code)", "en")
@@ -108,12 +111,31 @@ def configure_learner() -> tuple[Learner, InteractionPrefs]:
     input_side = _prompt_choice("Type your messages in", ["native", "target"], "native")
     response_side = _prompt_choice("Assistant should respond in", ["native", "target"], "target")
 
-    learner = Learner(LanguageProfile(native=native, target=Target(target, proficiency)))
+    # The choices are the learner's defaults, so they are saved with the profile.
     prefs = InteractionPrefs(
         learner_input_language=native if input_side == "native" else target,
         npc_response_language=native if response_side == "native" else target,
     )
-    return learner, prefs
+    return Learner(LanguageProfile(native=native, target=Target(target, proficiency)), prefs=prefs)
+
+
+def load_or_configure(
+    store: JsonFileLearnerStore,
+    reset: bool = False,
+    configure: Callable[[], Learner] = configure_learner,
+) -> tuple[Learner, bool]:
+    """The saved learner, or a freshly configured one that is saved. True if it was loaded.
+
+    `reset` skips loading, so it also recovers from an unreadable file. Setup finishes
+    before the old file is replaced, so abandoning it (Ctrl+C) keeps the old profile.
+    """
+    if not reset:
+        learner = store.load_current()
+        if learner is not None:
+            return learner, True
+    learner = configure()
+    store.save(learner)
+    return learner, False
 
 
 def _load_persona(value: str | None) -> str | None:
@@ -159,13 +181,12 @@ def _review(history: list[Message], arg: str, color: bool, more: bool = False) -
 async def _chat(
     engine: Engine,
     learner: Learner,
-    prefs: InteractionPrefs,
     persona: str | None,
     corrections: bool,
     color: bool,
 ) -> None:
     features = Features(corrections=True) if corrections else None
-    session = engine.start_session(learner, prefs, features)
+    session = engine.start_session(learner, features=features)
     conversation = session.converse(
         Npc.default(native_language=learner.target.language, persona=persona)
     )
@@ -242,6 +263,15 @@ def main() -> None:
     parser.add_argument(
         "--debug", action="store_true", help="Print which LLM provider/model serves each job"
     )
+    parser.add_argument(
+        "--profile",
+        type=Path,
+        default=DEFAULT_PROFILE_PATH,
+        help="Where the learner profile is saved (default: learner.json next to the CLI)",
+    )
+    parser.add_argument(
+        "--reset", action="store_true", help="Run setup again and replace the saved profile"
+    )
     args = parser.parse_args()
 
     _load_env()
@@ -257,16 +287,36 @@ def main() -> None:
         print(f"crowspeak-cli: {e}", file=sys.stderr)
         raise SystemExit(1) from None
     if args.debug:
+        # Which engine this run uses: site-packages (installed) or src/ (dev).
+        print(
+            f"[debug] engine: {crowspeak_engine.__version__} at {crowspeak_engine.__file__}",
+            file=sys.stderr,
+        )
         # .env does not override variables already set in the shell.
         print(f"[debug] env: {_debug_env()}", file=sys.stderr)
         for line in _provider_lines(providers, args.corrections):
             print(f"[debug] {line}", file=sys.stderr)
     engine = Engine(providers=providers)
-    learner, prefs = configure_learner()
+    store = JsonFileLearnerStore(args.profile)
     try:
-        asyncio.run(
-            _chat(engine, learner, prefs, persona, args.corrections, _use_color(sys.stdout))
+        learner, loaded = load_or_configure(store, args.reset)
+    except ProfileFileError as e:
+        print(f"crowspeak-cli: {e}", file=sys.stderr)
+        raise SystemExit(1) from None
+    except (KeyboardInterrupt, EOFError):
+        print("\nbye")
+        return
+    if loaded:
+        target = learner.target
+        print(
+            f"Loaded profile from {store.path}: "
+            f"{learner.language.native} -> {target.language} ({target.proficiency.value}). "
+            "Use --reset to change it."
         )
+    else:
+        print(f"Saved profile to {store.path}")
+    try:
+        asyncio.run(_chat(engine, learner, persona, args.corrections, _use_color(sys.stdout)))
     except KeyboardInterrupt:
         print("\nbye")
 

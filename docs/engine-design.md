@@ -144,7 +144,7 @@ If a consumer stops consuming `send_text` mid-stream (task cancelled, client dis
 
 - **`LLMProvider`** (`llm/base.py`) is a small protocol: `stream(messages) -> AsyncIterator[str]`. The engine depends on that and nothing else. `AzureOpenAIProvider` is the first adapter and takes its configuration in its constructor; the adapters read no environment variables themselves. `LocalOpenAIProvider` (`llm/local.py`) targets any OpenAI-compatible local server such as Ollama. `llm/factory.py` builds either from a `ProviderConfig`, or from `LLM_*` environment variables as a convenience (callers are responsible for loading `.env`). Nothing is read at import time, so `import crowspeak_engine` never fails for lack of credentials. Both adapters share one streaming loop in `llm/_openai_stream.py`.
 - **No terminal I/O, no environment reads in the engine.** `tests/test_boundary.py` enforces this. The only exception is `llm/factory.py`.
-- **The CLI is separate** (`crowspeak_cli`): the prompts, printing, UTF-8 stdout fix for Windows, and `--persona` flag all live there. It is deliberately minimal, because it is a reference client.
+- **The CLI is separate** (`crowspeak_cli`): the prompts, printing, UTF-8 stdout fix for Windows, the `--persona` flag and the saved learner profile (`JsonFileLearnerStore`) all live there. It is deliberately minimal, because it is a reference client. It lives in this repo only and is not part of the published package.
 
 ### Providers, Jobs and Models
 
@@ -257,11 +257,11 @@ src/crowspeak_engine/
   llm/            LLMProvider protocol, Azure + local adapters, env factory
                   providers.py: Providers, the Job registry
   proficiency*.py CEFR levels and per-language adapters (moved unchanged)
-src/crowspeak_cli/  reference terminal client
+src/crowspeak_cli/  reference terminal client (repo only, not in the wheel)
 tests/
 ```
 
-Package naming: import `crowspeak_engine`, PyPI `crowspeak-engine`, CLI `crowspeak-cli`. `crowspeak-core` remains the **repo** name only, since the repo contains the engine, gateway, CLI and protocol schemas. Naming the package after the repo would blur that boundary and force a rename when the gateway arrives.
+Package naming: import `crowspeak_engine`, PyPI `crowspeak-engine`. The reference CLI (`crowspeak_cli`) is repo-only, run with `python -m crowspeak_cli` or `make cli`, and has no published name or command; one would be chosen if it were ever released. `crowspeak-core` remains the **repo** name only, since the repo contains the engine, gateway, CLI and protocol schemas. Naming the package after the repo would blur that boundary and force a rename when the gateway arrives.
 
 ### Public API and stability
 

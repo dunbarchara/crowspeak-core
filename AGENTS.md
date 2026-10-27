@@ -4,7 +4,7 @@ Python engine (`crowspeak_engine`), reference CLI (`crowspeak_cli`) and design d
 
 ## Setup
 
-`uv sync` alone installs only the engine's base dependency (`openai`) and removes anything else, so name the dependency groups you need: `uv sync --group cli --group dev` (what CI uses), plus `--group tui` for the TUI. These are PEP 735 groups, not published extras. `python-dotenv` is in `cli`; `pytest`, `ruff`, `mypy` and `bandit` are in `dev`. A later plain `uv sync` or `uv run` re-syncs without them, so pass `--group` to `uv run` too (for example `uv run --group cli python -m crowspeak_cli`). The CLI is not part of the published wheel, so there is no `crowspeak-cli` command.
+`uv sync` alone installs only the engine's base dependency (`openai`) and removes anything else, so name the dependency groups you need: `uv sync --group cli --group dev` (what CI uses), plus `--group tui` for the TUI. These are PEP 735 groups, not published extras. `python-dotenv` is in `cli`; `pytest`, `ruff`, `mypy` and `bandit` are in `dev`. A later plain `uv sync` or `uv run` re-syncs without them, so pass `--group` to `uv run` too (for example `uv run --group cli python -m crowspeak_cli`). The CLI is not part of the published wheel, so there is no `crowspeak-cli` command. Run it with `make cli` (against the engine built as a wheel, the default for checking the package) or `make cli-dev` (against `src/`, for engine work); `--debug` prints which engine is in use. Its saved profile is `src/crowspeak_cli/learner.json` (gitignored); `--reset` re-runs setup, `--profile PATH` picks another file. As always, set `LLM_PROVIDER=local` unless you mean to use Azure.
 
 ## Testing policy
 

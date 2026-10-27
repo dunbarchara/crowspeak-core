@@ -8,3 +8,10 @@ __pycache__/
 
 # Throwaway demo TUI (see src/crowspeak_tui/SPEC.md)
 src/crowspeak_tui/
+
+# The CLI's saved learner profile (see src/crowspeak_cli/store.py)
+src/crowspeak_cli/learner.json*
+
+# Build output
+build/
+dist/
