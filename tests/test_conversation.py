@@ -122,6 +122,15 @@ async def test_multi_npc_events_are_isolated_per_conversation(session, llm):
     assert len(conv_b.history) == 2
 
 
+def test_npc_id_may_not_equal_the_learner_id(session):
+    clash = Npc(
+        id=session.learner.id, name="Clash", persona="", language=LanguageProfile(native="ja")
+    )
+
+    with pytest.raises(ValueError, match="same as the learner id"):
+        session.converse(clash)
+
+
 async def test_tags_become_expression_events_and_are_stripped_from_text(session, llm):
     llm.chunks = ["[hap", "py] Bonjour", "! [thinking] ", "Et toi ?"]
     conv = session.converse(features=ON)

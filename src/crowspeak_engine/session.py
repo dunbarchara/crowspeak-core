@@ -113,6 +113,9 @@ class Session:
         natively speaks the learner's target language)."""
         if npc is None:
             npc = Npc.default(native_language=self.learner.target.language)
+        if npc.id == self.learner.id:
+            # speaker_id carries either id, so they must not be the same string.
+            raise ValueError(f"npc id {npc.id!r} is the same as the learner id")
         existing = self.conversations.get(npc.id)
         if existing is not None:
             return existing

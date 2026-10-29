@@ -38,7 +38,7 @@ Use these terms consistently in code, docs and tasks.
 | **Learner** | The human practicing one language, as a party in a session: a `LanguageProfile` plus an id (one study track; planned to also carry persisted defaults and declared data, see section 8). The engine has no accounts, so it never says "user". |
 | **User** | An account in a wrapper app (login, billing, a `users` table). Not an engine concept. A user maps to a Learner at the app boundary. |
 | **NPC** | The character the learner talks to: persona, `LanguageProfile`, optional constraints. |
-| **Speaker** | Only the generic "whoever is talking", as in `speaker_id` (an NPC id, or `"user"` for now; it will become the learner id, see the Macro task "Use learner id as speaker_id"). It never means the NPC or the NPC's LLM. |
+| **Speaker** | Only the generic "whoever is talking", as in `speaker_id` (an NPC id, or the learner's id). It never means the NPC or the NPC's LLM. |
 | **NPC reply** | The conversational LLM call that plays the NPC and streams its answer. Replaces the earlier "speaker" wording. |
 | **Analyzer** | A separate, structured-JSON LLM call that reviews the learner's input and runs beside the NPC reply (corrections now; vocab tracking and others later). It never speaks to the learner as a character. |
 | **Role** | `system` / `user` / `assistant` on `Message`: the OpenAI-protocol field, which keeps its wire names. `user` means the learner's messages there. It never names an LLM assignment; that is a **Job**. |
@@ -116,7 +116,7 @@ async for event in conversation.send_text("こんにちは"):
 | `EngineError(message, recoverable)` | The provider failed. The pending user message was rolled back, so the conversation stays usable. |
 | `SessionStarted(learner_id)` | Built by `session.start_event()`. It is not yielded by a turn, so a gateway can send it when a client connects. |
 
-Conversation events carry `session_id`, `conversation_id` and `speaker_id` (the NPC id, or `"user"`), so one client can multiplex many conversations in a single session. That is the concrete payoff of the Session/Conversation split.
+Conversation events carry `session_id`, `conversation_id` and `speaker_id` (the NPC id, or the learner's id; `Session.converse` refuses an NPC whose id equals the learner's), so one client can multiplex many conversations in a single session. That is the concrete payoff of the Session/Conversation split.
 
 If a consumer stops consuming `send_text` mid-stream (task cancelled, client disconnects), `finally` cleanup keeps history coherent: the partial reply is kept as a `Message(..., interrupted=True)` if any chunks arrived, or the pending user message is rolled back if none did. No event is yielded for this — the disconnected consumer isn't listening — it only matters to a later reader of `history` (e.g. resuming a session, or the future gateway).
 
