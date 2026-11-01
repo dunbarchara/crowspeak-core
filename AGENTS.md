@@ -20,3 +20,4 @@ The wheel ships `py.typed`, so `uv run --group dev mypy` (config in `pyproject.t
 
 - The engine never reads the environment or does terminal I/O. Only `llm/factory.py` may read env vars (`tests/test_boundary.py` enforces this).
 - Provider config is explicit first: adapters, or `ProviderConfig` with `build_provider()` / `providers_from_config()`. `provider_from_env()` and `providers_from_env()` in `crowspeak_engine.llm` are convenience mappers for the CLI, tests and local development. Keep `Session` and prompt logic provider-agnostic.
+- Direction (decided 2026-10-29, not built yet): `docs/engine-design.md` section 12. A session becomes a dynamic container whose learners and NPCs own their configuration, with durable relationships and ephemeral conversations, one payer, and usage records plus a spend guard. Until the Macro spike lands, do not add new session-level or conversation-level language defaults or per-participant credentials.

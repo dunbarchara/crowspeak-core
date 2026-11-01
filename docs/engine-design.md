@@ -29,6 +29,8 @@ Conversation                            learner <-> one Npc
                       └─ history: list[Message]    (per-Npc; resumes if you return)
 ```
 
+This is the model as built. Section 12 records the direction we decided to move to (a dynamic session, durable relationships, ephemeral conversations), which is not implemented yet.
+
 ### Glossary
 
 Use these terms consistently in code, docs and tasks.
@@ -45,7 +47,8 @@ Use these terms consistently in code, docs and tasks.
 | **Provider** | A backend adapter: vendor or endpoint, credentials and client (`AzureOpenAIProvider`, `LocalOpenAIProvider`). Implements `LLMProvider`, and optionally `JSONProvider`. See section 8. |
 | **Job** | The named piece of work a provider is assigned: `npc`, an analyzer's or generator's name (`corrections`, later `vocab`, `daily_tasks`), or any string a consumer defines. A job resolves to a provider through the registry, falling back to the default. |
 | **Model** | The deployment or model name inside a provider (an Azure deployment, an Ollama tag). Not a registry layer: it is a provider constructor argument, so two models are two provider instances. |
-| **Session / Conversation** | World-level state for one learner, and one learner-NPC pairing with its history (see below). |
+| **Session / Conversation** | As built: world-level state for one learner, and one learner-NPC pairing with its history (see below). The target model (section 12) makes the session a container for many learners and NPCs and the conversation an ephemeral encounter. |
+| **Relationship** | Target model (section 12): the durable record between one learner and one NPC: history, per-NPC prefs, wrapper-owned state and notes. What the relationship means (for example stranger to friend) is the wrapper's. |
 
 ### Why Session is world-level and does not live inside Conversation
 
@@ -280,12 +283,17 @@ The public API is the names in `crowspeak_engine.__all__` and `crowspeak_engine.
 | Validate prefs against native/target languages | Blocks legitimate modes (third languages, any input/response mix). Constraints belong on the NPC, opt-in. |
 | Sync, non-streaming first pass | The end state is async and streaming, so it would mean rewriting every caller. |
 | Keep a `chat.py` shim | The CLI should be minimal enough that a shim is redundant. |
-| Build Group / multi-NPC routing now | Session already sits above conversations, so nothing needs to change when they arrive. |
+| Build Group / multi-learner machinery now | Build the seams only. The target model is in section 12; scenarios C to E are designed for, not built. |
 | Define all events in the architecture doc | Their schemas aren't specified yet. |
 | Call the assignments "roles" | `Role` already means `system`/`user`/`assistant` on `Message`. We use **Job**. |
 | Call them "slots", "tasks" or "domains" | "Slot" doesn't convey what the LLM is doing. "Task" collides with the R3F daily tasks. "Domain" is overloaded (domain model) and names the subject area, not the function. |
 | A fixed set of job categories (`npc`, `analysis`, `generation`) | One shared `analysis` job would stop a corrections analyzer using a bigger model than a later vocab analyzer. Jobs are plain strings, one per analyzer or generator name. |
 | Env vars as the primary configuration surface | A library shouldn't make its behaviour depend on ambient process state, and a wrapper pulls secrets from its own store. Configuration is explicit (adapters, `ProviderConfig`), and env is a mapper onto it in the factory. |
+| Per-participant API keys inside a shared session | A shared NPC would be paid for by one participant, or each participant would get a different response. We assume a single payer (section 12). |
+| Session-level or conversation-level language defaults | A session can hold learners and NPCs with different languages, and a conversation is a by-product of participants. Defaults belong to participants (section 12). |
+| Identify a conversation by its participant set | Participants join and leave at different times, so the identity is ambiguous. Conversations are ephemeral and continuity lives in relationships (section 12). |
+| NPC replies that carry translations | One generation should serve every participant. Translations are separate cached jobs (section 12). |
+| The engine owning relationship semantics (friendship levels) | That is product logic. The engine persists a relationship and accepts wrapper notes; the wrapper owns the meaning (section 12). |
 
 ## 11. Known gaps and next steps
 
@@ -299,3 +307,73 @@ These are intentionally open and are the first things to discuss after this foun
 - **Gateway and protocol.** A wire format for events (WebSocket) and a place for `SessionStarted` to be sent.
 - **Multi-provider job routing.** The `Providers` registry and per-job configuration (`ProviderConfig`, `providers_from_env`) are implemented, and the CLI builds from them and shows the provider and model per job under `--debug` (section 8, "Providers, Jobs and Models"). Nothing further is open for routing itself; the generator protocol is tracked separately below.
 - **Non-conversation structured jobs (generators).** The `Generator` protocol and `engine.generate()` are implemented (section 8, "Non-conversation jobs"). Open: a built-in `ScenarioGenerator` that scales item count and difficulty by proficiency.
+- **Dynamic sessions and relationships.** Decided, not built (section 12). A Macro spike settles the model before the session lifecycle and the protocol are built on it.
+- **Spend visibility.** Usage records, pricing, a spend guard, and CLI `/cost` and `--budget` are designed (section 12), not built.
+
+## 12. Direction: dynamic sessions, relationships and spend visibility
+
+Status: **decided 2026-10-29, not built.** Sections 3 to 9 describe the code as it is. This section records where we are taking it and why, so the reasoning is not lost. It is tracked in Macro by the spike "Decide the session, participant and relationship model for dynamic groups" and the epic "Spend visibility and caps". The spike settles the open items below before any code changes.
+
+### Why
+
+The engine should be the easy way to run a session, not only a one-learner chat loop. Several wrappers (CLI, TUI, R3F, perhaps a shared multi-user world) would otherwise each reimplement joining, leaving and event fan-out. Single-learner use stays the simple special case of the same model.
+
+### Model
+
+```
+Session        container and plumbing; no language of its own
+ ├─ Learners        join and leave independently; own language, proficiency, prefs, features
+ ├─ Npcs            added and removed at any time; own language profile, persona, constraints
+ ├─ Relationships   (learner, npc): durable
+ └─ Conversations   ephemeral encounters, created when participants interact
+```
+
+- The session holds no language defaults, and neither does a conversation. A conversation is the by-product of participants who each bring their own configuration. Preferences resolve from the participants: the learner's defaults, the learner's per-NPC choices (held on the relationship) and the NPC's constraints, over the engine's natural defaults. This replaces the four-layer order in section 8. `expression` is an NPC capability and `corrections` is a learner opt-in, so features split the same way.
+- A session is not tied to one language pair. Mixed-language sessions are valid because configuration lives on the participants.
+
+### Relationship
+
+A `Relationship` is the durable record between one learner and one NPC (what we first called "pair memory").
+
+| Engine owns | Wrapper owns |
+|---|---|
+| The key `(learner_id, npc_id)`, the history, per-NPC prefs, a `schema_version`, a `RelationshipStore` protocol with an in-memory implementation, and a bounded way to weave wrapper-supplied `notes` into the NPC prompt | What the relationship means (for example stranger to friend), progression rules and storage. An opaque `state` is persisted by the engine but not interpreted |
+
+Data about the learner across every NPC (observed vocabulary, error patterns, topics covered) belongs to the Learner (section 8), not to a relationship. This is the same boundary as the learner profile: schema and store protocol in the engine, storage and meaning in the wrapper.
+
+### Conversations and continuity
+
+A conversation is an ephemeral encounter with its own id. It is not identified by its participant set. Continuity lives in relationships: a group encounter writes to each present learner's relationship with each present NPC, and a learner who returns later, alone or with others, resumes through their own relationships. In the 1:1 case a conversation is a thin handle over the relationship's history.
+
+### Addressing, overhearing and silence
+
+- An NPC replies to one addressed learner message at a time and calibrates to that learner (level, prefs). It does not try to answer several learners at once.
+- The transcript is visible to every participant in an encounter, so a learner overhears asides between others. Private whispers are out of scope.
+- Silence is explicit. A turn emits a turn-started event, then either the reply or a turn-skipped event with a reason, so a client can tell a deliberate non-response from latency. Skipping starts as policy ("not addressed to this NPC"); letting the model choose silence comes later.
+- Events reach each participant through a subscription as well as the per-call stream.
+
+### Language and translation
+
+An NPC reply is generated once. Translations are separate jobs, cached by `(message_id, language)`, one per distinct participant language and requested on demand. A translation is never part of the NPC prompt or reply. This extends the on-demand translation idea parked in the learner-assist triage task.
+
+### Money: single payer and spend visibility
+
+- One provider registry per engine or session serves everyone in it. There are no per-participant keys or mixed payers: if participants brought their own keys, one would pay for a shared NPC or each would get a different response. Per-language routing can come later, since jobs are plain strings.
+- The engine does not decide who pays. It makes every call attributable and visible, because both commercial modes need that: a subscription where the backend pays, and a bring-your-own-key tier.
+- Needed: a `UsageRecord` per LLM call (job, model, learner and NPC ids, message id, tokens in, out and cached, latency, status, `estimated`; no message content) delivered to a wrapper-implemented `UsageSink` and optionally as an event; caller-supplied pricing, never hard-coded; a `SpendLimiter` consulted before each call that blocks it and emits `BudgetExceeded` over a cap; `max_tokens` per job; and swapping a job's provider on a live session. Caps are approximate (they can overshoot by one call). The wrapper owns the ledger and the UI. Units stay generic so voice (seconds, characters) fits. Tracked in the Macro epic "Spend visibility and caps".
+
+### Supported scenarios
+
+| | Scenario | Decision |
+|---|---|---|
+| A | One learner, one NPC (CLI, TUI) | Build now |
+| B | One learner, many NPCs, resumable (single-player R3F) | Build now |
+| C | Many learners in one session, each with independent 1:1 conversations (shared world) | Design for it; build join/leave and per-learner event routing after the gateway |
+| D | Learner-to-learner chat, with or without an NPC | Later |
+| E | Group encounter: shared transcript, overhearing, per-learner translations | North star, not built |
+
+Out of scope: NPC-to-NPC conversations, per-learner credentials, mixed payers, private whispers, and answering several learners with one collective reply.
+
+### What changes in the code
+
+Open until the spike is done: `Session` stops owning language defaults and a single learner; conversation history moves to `Relationship`; `converse(learner, npc)` replaces `converse(npc)`; join, leave and add-NPC operations and event subscription are added; concurrency on one conversation (a lock per conversation); a `SessionStore` for long-running sessions; participant limits. The footprint today is about 21 `session.learner` references in `src` and about 60 `start_session`/`converse` call sites, mostly tests. Events already carry the learner id as `speaker_id` (done 2026-10-28), which is the seam for shared conversations.
