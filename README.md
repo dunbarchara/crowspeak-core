@@ -10,7 +10,7 @@ See [docs/engine-design.md](docs/engine-design.md) for the design.
 pip install crowspeak-engine
 ```
 
-Requires Python 3.10 or newer. The only runtime dependency is `openai`.
+Requires Python 3.11 or newer. The only runtime dependency is `openai`.
 
 Until the first release is on PyPI, install a development build instead:
 
