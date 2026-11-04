@@ -236,15 +236,18 @@ class Conversation:
         yield TurnCompleted(message=message, **ids)
 
         if analyzer is not None and analysis is not None:
-            user_ids = self._ids("user")
+            learner_ids = self._ids(self.session.learner.id)
             try:
                 # Shielded so a consumer that leaves here doesn't cancel the analysis.
                 corrections = await asyncio.shield(analysis)
             except Exception as e:
                 yield AnalyzerError(
-                    analyzer=analyzer.name, message_id=user_message.id, message=str(e), **user_ids
+                    analyzer=analyzer.name,
+                    message_id=user_message.id,
+                    message=str(e),
+                    **learner_ids,
                 )
             else:
                 yield CorrectionsReady(
-                    message_id=user_message.id, corrections=corrections, **user_ids
+                    message_id=user_message.id, corrections=corrections, **learner_ids
                 )

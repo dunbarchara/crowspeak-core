@@ -21,7 +21,7 @@ class SessionStarted(Event):
 @dataclass(frozen=True, kw_only=True)
 class ConversationEvent(Event):
     conversation_id: str
-    speaker_id: str  # whoever is talking: an npc id, or "user" (to become the learner id)
+    speaker_id: str  # whoever is talking: an npc id, or the learner's id
 
 
 @dataclass(frozen=True, kw_only=True)

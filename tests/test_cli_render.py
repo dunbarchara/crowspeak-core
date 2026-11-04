@@ -97,7 +97,7 @@ def test_format_summary_when_correct():
 
 def test_format_analyzer_error_is_a_dim_note():
     err = AnalyzerError(
-        session_id="s", conversation_id="c", speaker_id="user",
+        session_id="s", conversation_id="c", speaker_id="learner-1",
         analyzer="corrections", message_id="m", message="boom",
     )  # fmt: skip
     assert render.format_analyzer_error(err) == "  (corrections unavailable: boom)"

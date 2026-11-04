@@ -252,7 +252,8 @@ async def test_corrections_follow_turn_completed_and_attach_to_the_message(es_le
     ready = events[-1]
     user_msg = conv.history[0]
     assert ready.message_id == user_msg.id
-    assert ready.speaker_id == "user" and ready.conversation_id == conv.conversation_id
+    assert ready.speaker_id == es_learner.id and ready.conversation_id == conv.conversation_id
+    assert all(e.speaker_id == conv.npc.id for e in events[:-1])
     assert user_msg.corrections == ready.corrections
     assert conv.history[1].corrections is None  # the NPC is never corrected
     assert len(analyzer.calls) == 1
@@ -355,6 +356,7 @@ async def test_analyzer_failure_is_non_fatal(es_learner, analyzer):
 
     assert isinstance(events[-1], AnalyzerError) and events[-1].analyzer == "corrections"
     assert events[-1].message_id == conv.history[0].id
+    assert events[-1].speaker_id == es_learner.id
     assert not any(isinstance(e, EngineError) for e in events)
     assert [m.role for m in conv.history] == ["user", "assistant"]
     assert conv.history[0].corrections is None
